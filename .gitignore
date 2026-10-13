@@ -1,0 +1,73 @@
+# Dependencies and package-manager caches
+node_modules/
+.pnpm-store/
+.yarn/
+.pnp.*
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Compiled output and test reports
+dist/
+build/
+web-build/
+coverage/
+*.tsbuildinfo
+
+# Expo, Metro, and generated native projects
+.expo/
+.expo-shared/
+.eas/
+expo-env.d.ts
+.metro-health-check*
+android/
+ios/
+.kotlin/
+.gradle/
+
+# Mobile build artifacts and signing material
+*.apk
+*.aab
+*.apks
+eas-build-*
+*.jks
+*.keystore
+*.p8
+*.p12
+*.pem
+*.key
+*.cer
+*.crt
+*.mobileprovision
+
+# API runtime data, uploaded media, and stored credentials/tokens
+services/api/data/
+
+# Tool caches and temporary files
+.cache/
+.turbo/
+.vite/
+*.tmp
+*.temp
+*.orig.*
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editors and operating systems
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo

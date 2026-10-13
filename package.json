@@ -1,0 +1,10 @@
+{
+  "name": "smart-screen",
+  "private": true,
+  "scripts": {
+    "dev:api": "npm run dev --prefix services/api",
+    "dev:admin": "npm run dev --prefix apps/admin",
+    "dev:share": "npm run dev --prefix apps/share-web",
+    "typecheck:api": "npm run typecheck --prefix services/api"
+  }
+}
