@@ -1,0 +1,7 @@
+# Loaded by local `docker compose up` only. Coolify runs docker-compose.yml
+# with an explicit -f, so these host binds never run on the server.
+services:
+  nginx:
+    ports:
+      - "80:80"
+      - "443:443"
