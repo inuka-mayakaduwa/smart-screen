@@ -9,6 +9,7 @@ export type Config = {
   publicApiUrl: string;
   adminOrigin: string;
   shareWebOrigin: string;
+  whiteboardWebOrigin: string;
   adminPassword: string;
   googleClientId: string;
   googleClientSecret: string;
@@ -28,6 +29,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     publicApiUrl: (env.PUBLIC_API_URL ?? `http://localhost:${env.PORT ?? 4000}`).replace(/\/$/, ""),
     adminOrigin: (env.ADMIN_ORIGIN ?? "http://localhost:5173").replace(/\/$/, ""),
     shareWebOrigin: (env.SHARE_WEB_ORIGIN ?? "http://localhost:5174").replace(/\/$/, ""),
+    whiteboardWebOrigin: (env.WHITEBOARD_WEB_ORIGIN ?? "http://localhost:5175").replace(/\/$/, ""),
     adminPassword: env.ADMIN_PASSWORD ?? "change-me",
     googleClientId: env.GOOGLE_CLIENT_ID ?? "",
     googleClientSecret: env.GOOGLE_CLIENT_SECRET ?? "",

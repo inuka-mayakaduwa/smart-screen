@@ -39,6 +39,13 @@ export type RoomShare = {
   codeRotateMinutes: number;
 };
 
+export type RoomSessionSummary = {
+  id: string;
+  openedAt: string;
+  endedAt: string | null;
+  whiteboardUpdatedAt: string;
+};
+
 export type RoomDetail = {
   id: string;
   name: string;
@@ -52,6 +59,7 @@ export type RoomDetail = {
   images: RoomImage[];
   connections: RoomConnection[];
   devices: RoomDevice[];
+  sessions: RoomSessionSummary[];
 };
 
 export function getToken(): string | null {

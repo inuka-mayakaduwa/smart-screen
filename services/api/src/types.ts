@@ -79,6 +79,41 @@ export type OAuthState = {
   expiresAt: string;
 };
 
+export type SessionOpenedBy = "share" | "whiteboard" | "meeting";
+
+export type WhiteboardElement = {
+  id: string;
+  version: number;
+  isDeleted?: boolean;
+} & Record<string, unknown>;
+
+export type WhiteboardFile = Record<string, unknown>;
+
+export type WhiteboardScene = {
+  elements: WhiteboardElement[];
+  files: Record<string, WhiteboardFile>;
+  updatedAt: string;
+};
+
+export type RoomSession = {
+  id: string;
+  roomId: string;
+  code: string;
+  openedAt: string;
+  endedAt: string | null;
+  openedBy: SessionOpenedBy;
+  whiteboard: WhiteboardScene;
+};
+
+export type AppRelease = {
+  versionCode: number;
+  versionName: string;
+  filename: string;
+  bytes: number;
+  uploadedAt: string;
+  notes: string;
+};
+
 export type DataFile = {
   rooms: Room[];
   images: RoomImage[];
@@ -87,6 +122,8 @@ export type DataFile = {
   devices: Device[];
   oauthStates: OAuthState[];
   displayDefaults: PanelDisplaySettings;
+  sessions: RoomSession[];
+  appRelease: AppRelease | null;
 };
 
 export type Meeting = {

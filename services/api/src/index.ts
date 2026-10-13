@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { attachSignaling } from "./signaling.js";
+import { attachWhiteboard } from "./whiteboard.js";
 import { createStore } from "./store.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -15,6 +16,7 @@ const store = createStore(config.dataDir);
 const { app } = createApp(store, config);
 const server = createServer(app);
 attachSignaling(server, store);
+attachWhiteboard(server, store);
 
 server.listen(config.port, () => {
   console.log(`Control API listening on ${config.publicApiUrl}`);

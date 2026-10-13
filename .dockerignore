@@ -1,0 +1,6 @@
+**/.git
+**/node_modules
+**/dist
+**/.expo
+services/api/data
+apps/room/android

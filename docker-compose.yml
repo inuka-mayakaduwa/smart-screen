@@ -1,0 +1,44 @@
+services:
+  nginx:
+    build:
+      context: .
+      dockerfile: deploy/nginx/Dockerfile
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      api:
+        condition: service_healthy
+    # Mount a real certificate over the image placeholder:
+    #   - ./deploy/certs:/etc/nginx/certs:ro
+
+  api:
+    build:
+      context: ./services/api
+    env_file:
+      - path: ./deploy/.env.example
+        required: true
+      - path: ./deploy/.env
+        required: false
+    environment:
+      PORT: "4000"
+      DATA_DIR: /data
+    volumes:
+      - api-data:/data
+    expose:
+      - "4000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4000/api/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  api-data:

@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { defaultDisplaySettings, normalizeDisplaySettings } from "./display.js";
-import type { DataFile, Room } from "./types.js";
+import type { AppRelease, DataFile, Room, RoomSession, WhiteboardScene } from "./types.js";
 
 const EMPTY: DataFile = {
   rooms: [],
@@ -11,6 +11,8 @@ const EMPTY: DataFile = {
   devices: [],
   oauthStates: [],
   displayDefaults: defaultDisplaySettings(),
+  sessions: [],
+  appRelease: null,
 };
 
 export type Store = {
@@ -37,6 +39,8 @@ export function createStore(dataDir: string): Store {
       devices: parsed.devices ?? [],
       oauthStates: parsed.oauthStates ?? [],
       displayDefaults: normalizeDisplaySettings(parsed.displayDefaults),
+      sessions: (parsed.sessions ?? []).map(normalizeSession),
+      appRelease: normalizeRelease(parsed.appRelease),
     };
   }
 
@@ -54,6 +58,39 @@ export function createStore(dataDir: string): Store {
   }
 
   return { read, update, filePath };
+}
+
+function normalizeRelease(value: AppRelease | null | undefined): AppRelease | null {
+  if (!value || typeof value !== "object") return null;
+  const versionCode = Number(value.versionCode);
+  if (!Number.isInteger(versionCode) || versionCode < 1) return null;
+  if (typeof value.versionName !== "string" || !value.versionName.trim()) return null;
+  if (typeof value.filename !== "string" || !value.filename.trim()) return null;
+  return {
+    versionCode,
+    versionName: value.versionName.trim(),
+    filename: value.filename.trim(),
+    bytes: Number.isFinite(Number(value.bytes)) ? Number(value.bytes) : 0,
+    uploadedAt: typeof value.uploadedAt === "string" ? value.uploadedAt : new Date(0).toISOString(),
+    notes: typeof value.notes === "string" ? value.notes : "",
+  };
+}
+
+function normalizeSession(session: RoomSession): RoomSession {
+  const board = session.whiteboard ?? emptyBoard(session.openedAt);
+  return {
+    ...session,
+    endedAt: session.endedAt ?? null,
+    whiteboard: {
+      elements: Array.isArray(board.elements) ? board.elements : [],
+      files: board.files && typeof board.files === "object" && !Array.isArray(board.files) ? board.files : {},
+      updatedAt: board.updatedAt || session.openedAt,
+    },
+  };
+}
+
+function emptyBoard(updatedAt: string): WhiteboardScene {
+  return { elements: [], files: {}, updatedAt };
 }
 
 function normalizeRoomRecord(room: Room): Room {

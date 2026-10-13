@@ -45,7 +45,13 @@ export function getShareSession(code: string) {
 }
 
 export function attachSignaling(server: Server, store: Store) {
-  const wss = new WebSocketServer({ server, path: "/ws" });
+  const wss = new WebSocketServer({ noServer: true });
+  server.on("upgrade", (request, socket, head) => {
+    if (requestPath(request) !== "/ws") return;
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit("connection", ws, request);
+    });
+  });
 
   wss.on("connection", (socket, request) => {
     const peer = authorize(socket, request, store);
@@ -145,6 +151,10 @@ export function attachSignaling(server: Server, store: Store) {
   });
 
   return wss;
+}
+
+function requestPath(request: IncomingMessage) {
+  return new URL(request.url ?? "/", "http://localhost").pathname;
 }
 
 function linksFor(code: string): RoomLinks {
