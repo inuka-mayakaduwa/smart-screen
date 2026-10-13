@@ -54,6 +54,7 @@ export function RoomPage() {
             onError={setError}
           />
           <ShareForm room={room} turnConfigured={Boolean(config?.turnConfigured)} onSaved={reload} onError={setError} />
+          <SessionList room={room} />
         </div>
       </div>
     </>
@@ -519,6 +520,33 @@ function ShareForm({
       </button>
     </form>
   );
+}
+
+function SessionList({ room }: { room: RoomDetail }) {
+  const sessions = [...room.sessions].sort((a, b) => b.openedAt.localeCompare(a.openedAt));
+  return (
+    <section className="panel stack">
+      <h2>Sessions</h2>
+      <p className="muted">
+        A session opens in the background when someone shares, opens the whiteboard, or joins a meeting. It stays open across meetings until the panel ends it. Each session keeps its whiteboard.
+      </p>
+      {sessions.length === 0 ? <p className="muted">No sessions yet.</p> : null}
+      {sessions.map((session) => (
+        <div key={session.id}>
+          <strong>{session.endedAt ? "Ended" : "Open"}</strong>
+          <div className="muted">Opened {formatWhen(session.openedAt)}</div>
+          <div className="muted">Whiteboard updated {formatWhen(session.whiteboardUpdatedAt)}</div>
+          {session.endedAt ? <div className="muted">Ended {formatWhen(session.endedAt)}</div> : null}
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function formatWhen(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
 }
 
 function withRotateMinutes(share: RoomShare): RoomShare {

@@ -2,8 +2,7 @@ import { FormEvent, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
-const params = new URLSearchParams(window.location.search);
-const initialCode = (params.get("code") ?? "").toUpperCase();
+const initialCode = codeFromLocation();
 const apiBase = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 
 function App() {
@@ -19,6 +18,10 @@ function App() {
       setStatus("Enter the room code shown on the panel.");
       return;
     }
+    const url = new URL(window.location.href);
+    url.pathname = `/${roomCode}`;
+    url.searchParams.delete("code");
+    window.history.replaceState(null, "", url);
     setSharing(true);
     setStatus("Asking the browser for the screen…");
     try {
@@ -363,6 +366,18 @@ function labelWidth(width: number) {
 
 function debug(message: string) {
   if (import.meta.env.DEV) console.log(`[share] ${message}`);
+}
+
+function codeFromLocation() {
+  const query = new URLSearchParams(window.location.search).get("code");
+  if (query) return normalize(query);
+  const segment = window.location.pathname.split("/").filter(Boolean)[0] ?? "";
+  if (!segment || reservedPath(segment)) return "";
+  return normalize(segment);
+}
+
+function reservedPath(segment: string) {
+  return ["admin", "api", "assets", "board", "media", "ws"].includes(segment.toLowerCase());
 }
 
 function normalize(value: string) {

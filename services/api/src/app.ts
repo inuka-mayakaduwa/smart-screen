@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
@@ -17,6 +17,9 @@ import {
   microsoftConfigured,
 } from "./microsoft.js";
 import { createShareSession, getShareSession } from "./signaling.js";
+import { APK_FILENAME, APK_LIMIT_BYTES, assertApkFile, presentRelease, readReleaseFields } from "./release.js";
+import { endOpenSession, ensureSession, parseOpenedBy, sessionByCode } from "./sessions.js";
+import { closeWhiteboard, liveScene } from "./whiteboard.js";
 import type { Store } from "./store.js";
 import {
   adminToken,
@@ -35,7 +38,7 @@ import {
   parseDisplayPatch,
   resolveDisplaySettings,
 } from "./display.js";
-import type { CalendarProvider, Room, RoomShare } from "./types.js";
+import type { CalendarProvider, Room, RoomSession, RoomShare } from "./types.js";
 
 const CONNECT_TTL_MS = 10 * 60 * 1000;
 const OAUTH_TTL_MS = 15 * 60 * 1000;
@@ -55,11 +58,21 @@ export type AppContext = {
 export function createApp(store: Store, config: Config): AppContext {
   const app = express();
   const uploadDir = path.join(path.dirname(store.filePath), "uploads");
+  const releaseDir = path.join(path.dirname(store.filePath), "releases");
   mkdirSync(uploadDir, { recursive: true });
+  mkdirSync(releaseDir, { recursive: true });
+  const apkUpload = multer({
+    storage: multer.diskStorage({
+      destination: releaseDir,
+      filename: (_req, _file, cb) => cb(null, "incoming.apk"),
+    }),
+    limits: { fileSize: APK_LIMIT_BYTES },
+  });
 
+  app.set("trust proxy", 1);
   app.use(
     cors({
-      origin: [config.adminOrigin, config.shareWebOrigin],
+      origin: [...new Set([config.adminOrigin, config.shareWebOrigin, config.whiteboardWebOrigin].map(browserOrigin))],
     }),
   );
   app.use(express.json({ limit: "1mb" }));
@@ -91,6 +104,41 @@ export function createApp(store: Store, config: Config): AppContext {
         data.displayDefaults = display;
       });
       res.json({ display });
+    }),
+  );
+
+  app.get("/api/admin/app/release", requireAdmin, (_req, res) => {
+    res.json({ release: presentRelease(store.read().appRelease) });
+  });
+
+  app.post(
+    "/api/admin/app/release",
+    requireAdmin,
+    acceptApk,
+    route((req, res) => {
+      const file = req.file;
+      try {
+        assertApkFile(file);
+        const fields = readReleaseFields(req.body ?? {}, store.read().appRelease?.versionCode ?? null);
+        const published = path.join(releaseDir, APK_FILENAME);
+        rmSync(published, { force: true });
+        renameSync(path.join(releaseDir, "incoming.apk"), published);
+        const release = {
+          versionCode: fields.versionCode,
+          versionName: fields.versionName,
+          filename: APK_FILENAME,
+          bytes: file!.size,
+          uploadedAt: new Date().toISOString(),
+          notes: fields.notes,
+        };
+        store.update((data) => {
+          data.appRelease = release;
+        });
+        res.status(201).json({ release: presentRelease(release) });
+      } catch (error) {
+        rmSync(path.join(releaseDir, "incoming.apk"), { force: true });
+        throw error;
+      }
     }),
   );
 
@@ -201,6 +249,7 @@ export function createApp(store: Store, config: Config): AppContext {
       data.connectTokens = data.connectTokens.filter((token) => token.roomId !== room!.id);
       data.devices = data.devices.filter((device) => device.roomId !== room!.id);
       data.oauthStates = data.oauthStates.filter((state) => state.roomId !== room!.id);
+      data.sessions = data.sessions.filter((session) => session.roomId !== room!.id);
       return images;
     });
     for (const image of removed) {
@@ -425,7 +474,7 @@ export function createApp(store: Store, config: Config): AppContext {
       const code = createConnectCode().slice(0, 6);
       const ttlMs = share.codeRotateMinutes * 60 * 1000;
       createShareSession({ code, roomId: room.id, deviceId: device.id, ttlMs });
-      const shareUrl = `${config.shareWebOrigin}/?code=${code}`;
+      const shareUrl = joinCodeUrl(config.shareWebOrigin, code);
       const qrDataUrl = await QRCode.toDataURL(shareUrl, { margin: 1, width: 480, errorCorrectionLevel: "M" });
       res.status(201).json({
         code,
@@ -436,6 +485,70 @@ export function createApp(store: Store, config: Config): AppContext {
       });
     }),
   );
+
+  app.post(
+    "/api/display/session",
+    route((req, res) => {
+      const { room } = requireDevice(req);
+      const openedBy = parseOpenedBy(req.body?.openedBy);
+      const session = store.update((data) => ensureSession(data, room.id, openedBy));
+      res.json({ session: presentSession(session, config) });
+    }),
+  );
+
+  app.get(
+    "/api/display/session",
+    route((req, res) => {
+      const { room } = requireDevice(req);
+      const session = store.read().sessions.find((item) => item.roomId === room.id && item.endedAt === null);
+      res.json({ session: session ? presentSession(session, config) : null });
+    }),
+  );
+
+  app.post(
+    "/api/display/session/end",
+    route((req, res) => {
+      const { room } = requireDevice(req);
+      const session = store.update((data) => endOpenSession(data, room.id));
+      closeWhiteboard(store, session.code);
+      res.json({ session: presentSession(session, config) });
+    }),
+  );
+
+  app.get(
+    "/api/display/update",
+    route((req, res) => {
+      requireDevice(req);
+      res.json({ release: presentRelease(store.read().appRelease) });
+    }),
+  );
+
+  app.get(
+    "/api/display/update/apk",
+    route((req, res) => {
+      requireDevice(req);
+      const release = store.read().appRelease;
+      if (!release) throw new HttpError(404, "No app update is published");
+      const file = path.join(releaseDir, APK_FILENAME);
+      res.type("application/vnd.android.package-archive");
+      res.download(file, `smart-room-${release.versionName}.apk`);
+    }),
+  );
+
+  app.get("/api/whiteboard/:code", (req, res) => {
+    const code = normalizeConnectCode(req.params.code);
+    const session = sessionByCode(store.read(), code);
+    if (!session) {
+      res.status(404).json({ error: "This whiteboard is not available" });
+      return;
+    }
+    if (session.endedAt) {
+      res.json({ open: false });
+      return;
+    }
+    const scene = liveScene(code) ?? session.whiteboard;
+    res.json({ open: true, code: session.code, elements: scene.elements, files: scene.files });
+  });
 
   app.get("/api/share/:code", (req, res) => {
     const session = getShareSession(normalizeConnectCode(req.params.code));
@@ -469,6 +582,16 @@ export function createApp(store: Store, config: Config): AppContext {
     if (status === 500) console.error(error);
     res.status(status).json({ error: message });
   });
+
+  function acceptApk(req: Request, res: Response, next: NextFunction) {
+    apkUpload.single("file")(req, res, (error: unknown) => {
+      if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+        next(new HttpError(400, "The APK must be 180 MB or smaller"));
+        return;
+      }
+      next(error);
+    });
+  }
 
   function requireAdmin(req: Request, res: Response, next: NextFunction) {
     const bearer = bearerToken(req);
@@ -672,6 +795,26 @@ function presentAdminRoom(data: ReturnType<Store["read"]>, room: Room, base: str
         lastSeenAt: device.lastSeenAt,
         revokedAt: device.revokedAt,
       })),
+    sessions: data.sessions
+      .filter((session) => session.roomId === room.id)
+      .sort((a, b) => b.openedAt.localeCompare(a.openedAt))
+      .map((session) => ({
+        id: session.id,
+        openedAt: session.openedAt,
+        endedAt: session.endedAt,
+        whiteboardUpdatedAt: session.whiteboard.updatedAt,
+      })),
+  };
+}
+
+function presentSession(session: RoomSession, config: Config) {
+  return {
+    id: session.id,
+    code: session.code,
+    openedAt: session.openedAt,
+    endedAt: session.endedAt,
+    whiteboardUrl: joinCodeUrl(config.whiteboardWebOrigin, session.code),
+    whiteboardUpdatedAt: session.whiteboard.updatedAt,
   };
 }
 
@@ -694,8 +837,21 @@ function consumeState(store: Store, id: string) {
   });
 }
 
+function joinCodeUrl(origin: string, code: string) {
+  return `${origin.replace(/\/$/, "")}/${code}`;
+}
+
+function browserOrigin(value: string) {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return value.replace(/\/$/, "");
+  }
+}
+
 function redirectAdmin(res: Response, config: Config, roomId: string, error?: string) {
-  const url = new URL(roomId ? `${config.adminOrigin}/rooms/${roomId}` : config.adminOrigin);
+  const base = config.adminOrigin.replace(/\/$/, "");
+  const url = new URL(roomId ? `${base}/rooms/${roomId}` : `${base}/`);
   if (error) url.searchParams.set("error", error);
   else if (roomId) url.searchParams.set("connected", "1");
   res.redirect(url.toString());

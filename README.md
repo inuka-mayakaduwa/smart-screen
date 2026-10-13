@@ -8,10 +8,12 @@ Two layers. The control pane creates rooms, images, and calendar connections. Th
 npm install --prefix services/api
 npm install --prefix apps/admin
 npm install --prefix apps/share-web
+npm install --prefix apps/whiteboard-web
 copy services\api\.env.example services\api\.env
 npm run dev:api
 npm run dev:admin
 npm run dev:share
+npm run dev:whiteboard
 ```
 
 Open http://localhost:5173 and sign in with the `ADMIN_PASSWORD` in `services/api/.env` (local default `change-me`).
@@ -27,6 +29,7 @@ Copy `services/api/.env.example` to `services/api/.env`. Restart the API after a
 | `PUBLIC_API_URL` | Address the panel uses for images and the control API. Use the computer's LAN address when the panel is another device. |
 | `ADMIN_ORIGIN` | Admin site the browser returns to after Google or Microsoft sign-in. Default `http://localhost:5173`. |
 | `SHARE_WEB_ORIGIN` | Share page origin, with no path and no code. Default `http://localhost:5174`. |
+| `WHITEBOARD_WEB_ORIGIN` | Whiteboard page origin, with no path and no code. Default `http://localhost:5175`. |
 | `ADMIN_PASSWORD` | Admin sign-in password. |
 | `GOOGLE_CLIENT_ID` | OAuth client ID from Google Cloud. |
 | `GOOGLE_CLIENT_SECRET` | OAuth client secret from Google Cloud. |
@@ -36,6 +39,8 @@ Copy `services/api/.env.example` to `services/api/.env`. Restart the API after a
 | `MICROSOFT_REDIRECT_URI` | Must match the redirect URI on that registration. Default `http://localhost:4000/api/oauth/microsoft/callback`. |
 
 The share site has its own file, `apps/share-web/.env`. Set `API_URL` to the control API, for example `http://localhost:4000`. Set `VITE_API_URL` only when a built share site is hosted on a different origin than the API.
+
+The whiteboard page is `apps/whiteboard-web`. Copy `apps/whiteboard-web/.env.example` to `apps/whiteboard-web/.env` and set `API_URL` the same way. Set `VITE_API_URL` only when a built whiteboard page is hosted on a different origin than the API.
 
 The redirect URI is the address the admin's browser uses to reach the API. `http://localhost:4000/...` works when the admin is on the same computer as the API. If the browser reaches the API by a LAN address, register that exact address instead and put the same value in the matching `*_REDIRECT_URI`.
 
@@ -102,12 +107,42 @@ On the panel:
 
 The same APK is used for every room. The token chooses the room. Room name, images, and meta come from the control API after that.
 
+Later builds can install themselves. In admin Settings, publish the APK with a version name and a version code higher than the one already on the panels. Each panel downloads it from the control server and opens the Android installer. The panel Settings screen shows the installed version and an update method: Manual Check, Prompt on launch, or Force. The first APK that contains this updater still has to be installed once by hand. Raise `android.versionCode` in `apps/room/app.json` for every build you publish.
+
 The APK is a fullscreen landscape app without device-owner setup. A locked kiosk that returns Home to this screen, while still allowing Meet and Teams, depends on the panel image and is not configured by the APK.
 
 ## Screen share
 
-Room code sharing is received by the APK. The laptop opens the page in the QR code and shares its screen. That page is `apps/share-web`, and the link is only that page plus the room code, such as `http://localhost:5174/?code=ABC123`. Set `SHARE_WEB_ORIGIN` to an address the laptop can open. The share site reads its control API from `API_URL` in `apps/share-web/.env` and forwards `/api` and `/ws` there. Set `VITE_API_URL` only when a built share site is hosted on a different origin than the API.
+Room code sharing is received by the APK. The laptop opens the page in the QR code and shares its screen. That page is `apps/share-web`, and the link is the share origin plus the room code, such as `http://localhost:5174/ABC123`. A `?code=` link still works. Set `SHARE_WEB_ORIGIN` to an address the laptop can open. The share site reads its control API from `API_URL` in `apps/share-web/.env` and forwards `/api` and `/ws` there. Set `VITE_API_URL` only when a built share site is hosted on a different origin than the API.
 
 TURN (`TURN_URL`, `TURN_USERNAME`, `TURN_PASSWORD`) is required when the laptop is not on the same network as the panel. Without TURN, sharing works on one LAN.
 
 Google Cast, Miracast, and AirPlay are slots in the share screen. They stay unavailable until a licensed or system receiver is linked. Miracast needs system-signed Wi-Fi Display access, which a normal APK does not have. The panel's own share app can be opened with the OEM package name configured on the room.
+
+## Whiteboard
+
+Connect to Screen on the panel stays on the room until someone shares, opens the whiteboard, or joins a meeting. That first action opens one room session in the background. The session can cover several meetings and keeps its whiteboard. End session on the panel closes it. The next activity starts a new one.
+
+The whiteboard icon on the room opens the board full screen. The same board opens in a browser at `WHITEBOARD_WEB_ORIGIN` with the code, for example `http://10.224.0.237:5175/ABC12345`. That origin has to be an address the panel can open. An emulator cannot use `localhost`.
+
+## One domain
+
+Nginx is the only published service. The API, admin, share page, and whiteboard stay on the Docker network.
+
+```powershell
+copy deploy\.env.example deploy\.env
+docker compose up --build
+```
+
+| URL | Service |
+| --- | --- |
+| `https://connect.example.com/` | Share page |
+| `https://connect.example.com/AB12CD` | Screen share. The code is 6 characters |
+| `https://connect.example.com/AB12CD34` | Whiteboard. The code is 8 characters |
+| `https://connect.example.com/admin` | Admin |
+| `https://connect.example.com/api/...` | Control API |
+| `https://connect.example.com/media/...` | Room images |
+| `https://connect.example.com/ws` | Share socket |
+| `https://connect.example.com/ws/whiteboard` | Whiteboard socket |
+
+Set `PUBLIC_API_URL`, `SHARE_WEB_ORIGIN`, and `WHITEBOARD_WEB_ORIGIN` to that domain. Set `ADMIN_ORIGIN` to the same domain plus `/admin`, because that is where the admin app is mounted. OAuth callbacks are `https://connect.example.com/api/oauth/google/callback` and the Microsoft equivalent. The image includes a placeholder TLS certificate. Mount real files at `/etc/nginx/certs/fullchain.pem` and `/etc/nginx/certs/privkey.pem` before pointing a public name at it. The panel control URL is the domain with no `/api` suffix.

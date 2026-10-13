@@ -79,7 +79,7 @@ test("admin creates a room, a panel redeems Connect, and state comes from the AP
     assert.equal(session.code.length, 6);
     const expiresIn = new Date(session.expiresAt).getTime() - Date.now();
     assert.ok(expiresIn > 14 * 60 * 1000 && expiresIn <= 15 * 60 * 1000);
-    assert.equal(session.shareUrl, `http://127.0.0.1:5174/?code=${session.code}`);
+    assert.equal(session.shareUrl, `http://127.0.0.1:5174/${session.code}`);
     assert.match(session.qrDataUrl, /^data:image\/png/);
     assert.ok(session.iceServers.some((server) => server.urls.startsWith("stun:")));
     const lookup = await request<{ code: string }>(base, `/api/share/${session.code}`);
@@ -97,6 +97,7 @@ async function start() {
     publicApiUrl: "http://127.0.0.1",
     adminOrigin: "http://127.0.0.1:5173",
     shareWebOrigin: "http://127.0.0.1:5174",
+    whiteboardWebOrigin: "http://127.0.0.1:5175",
     adminPassword: "test-admin",
     googleClientId: "",
     googleClientSecret: "",
