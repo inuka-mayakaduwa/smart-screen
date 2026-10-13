@@ -3,9 +3,10 @@ services:
     build:
       context: .
       dockerfile: deploy/nginx/Dockerfile
-    ports:
-      - "80:80"
-      - "443:443"
+    # Host ports 80 and 443 stay unpublished. Coolify's proxy already
+    # binds them. Local publishes live in docker-compose.override.yml.
+    expose:
+      - "80"
     depends_on:
       api:
         condition: service_healthy

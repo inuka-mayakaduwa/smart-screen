@@ -134,6 +134,8 @@ copy deploy\.env.example deploy\.env
 docker compose up --build
 ```
 
+Local Compose publishes ports 80 and 443 through `docker-compose.override.yml`. Coolify runs `docker-compose.yml` alone, and its proxy already owns those host ports, so the nginx service only exposes port 80 on the Compose network. In Coolify, assign the public domain to the **nginx** service and set the container port to **80**. Leave **api** without a domain. Coolify terminates TLS; the image's placeholder certificate is only for the local publish.
+
 | URL | Service |
 | --- | --- |
 | `https://connect.example.com/` | Share page |
