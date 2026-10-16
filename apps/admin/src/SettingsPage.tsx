@@ -67,7 +67,79 @@ export function SettingsPage() {
         </div>
       </form>
       <AppReleasePanel />
+      <DownloadAccessPanel />
     </>
+  );
+}
+
+type AppDownload = { code: string; createdAt: string };
+
+function DownloadAccessPanel() {
+  const [download, setDownload] = useState<AppDownload | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const link = `${window.location.origin}/download`;
+
+  useEffect(() => {
+    api<{ download: AppDownload | null }>("/api/admin/app/download")
+      .then((body) => setDownload(body.download))
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoaded(true));
+  }, []);
+
+  async function issue() {
+    setBusy(true);
+    setError("");
+    try {
+      const body = await api<{ download: AppDownload }>("/api/admin/app/download", { method: "POST" });
+      setDownload(body.download);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create a download code");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function turnOff() {
+    setBusy(true);
+    setError("");
+    try {
+      await api("/api/admin/app/download", { method: "DELETE" });
+      setDownload(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not turn off downloads");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="panel stack">
+      <h2>Download page</h2>
+      <p className="muted">
+        Anyone with the code can download the published APK from <a href={link}>{link}</a>. A new code replaces the old one. Turn it off to close the page.
+      </p>
+      {error ? <div className="banner error">{error}</div> : null}
+      {!loaded ? <p className="muted">Loading…</p> : null}
+      {loaded && download ? (
+        <>
+          <p className="token">{`${download.code.slice(0, 4)}-${download.code.slice(4)}`}</p>
+          <p className="muted">Created {new Date(download.createdAt).toLocaleString()}</p>
+        </>
+      ) : null}
+      {loaded && !download ? <p className="muted">Downloads are off.</p> : null}
+      <div className="ds-actions">
+        {download ? (
+          <button className="danger" type="button" disabled={busy} onClick={() => void turnOff()}>
+            Turn off downloads
+          </button>
+        ) : null}
+        <button className="primary" type="button" disabled={busy} onClick={() => void issue()}>
+          {download ? "New code" : "Turn on with a code"}
+        </button>
+      </div>
+    </section>
   );
 }
 

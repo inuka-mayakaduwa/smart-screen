@@ -142,6 +142,7 @@ Local Compose publishes ports 80 and 443 through `docker-compose.override.yml`. 
 | `https://connect.example.com/AB12CD` | Screen share. The code is 6 characters |
 | `https://connect.example.com/AB12CD34` | Whiteboard. The code is 8 characters |
 | `https://connect.example.com/admin` | Admin |
+| `https://connect.example.com/download` | Panel APK download. Needs the code from admin Display defaults → Download page |
 | `https://connect.example.com/api/...` | Control API |
 | `https://connect.example.com/media/...` | Room images |
 | `https://connect.example.com/ws` | Share socket |

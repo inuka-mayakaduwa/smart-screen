@@ -17,6 +17,7 @@ import {
   microsoftConfigured,
 } from "./microsoft.js";
 import { createDebugLogs, formatDebugReport, normalizeDebugLines } from "./debugLogs.js";
+import { allowDownloadAttempt, downloadPage } from "./download.js";
 import { createShareSession, getShareSession } from "./signaling.js";
 import { APK_FILENAME, APK_LIMIT_BYTES, assertApkFile, presentRelease, readReleaseFields } from "./release.js";
 import { endOpenSession, ensureSession, parseOpenedBy, sessionByCode } from "./sessions.js";
@@ -78,6 +79,7 @@ export function createApp(store: Store, config: Config): AppContext {
     }),
   );
   app.use(express.json({ limit: "1mb" }));
+  app.use("/api/download", express.urlencoded({ extended: false, limit: "4kb" }));
 
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true });
@@ -143,6 +145,55 @@ export function createApp(store: Store, config: Config): AppContext {
       }
     }),
   );
+
+  app.get("/api/admin/app/download", requireAdmin, (_req, res) => {
+    res.json({ download: store.read().appDownload });
+  });
+
+  app.post("/api/admin/app/download", requireAdmin, (_req, res) => {
+    const download = { code: createConnectCode(), createdAt: new Date().toISOString() };
+    store.update((data) => {
+      data.appDownload = download;
+    });
+    res.status(201).json({ download });
+  });
+
+  app.delete("/api/admin/app/download", requireAdmin, (_req, res) => {
+    store.update((data) => {
+      data.appDownload = null;
+    });
+    res.status(204).end();
+  });
+
+  app.get(["/download", "/download/"], (_req, res) => {
+    const data = store.read();
+    res.setHeader("cache-control", "no-store");
+    res.type("html").send(downloadPage(data.appRelease, { open: Boolean(data.appDownload) }));
+  });
+
+  app.post("/api/download/apk", (req, res) => {
+    const data = store.read();
+    res.setHeader("cache-control", "no-store");
+    const page = (status: number, error: string) =>
+      res.status(status).type("html").send(downloadPage(data.appRelease, { open: Boolean(data.appDownload), error }));
+    if (!data.appRelease || !data.appDownload) {
+      page(404, "Downloads are not available.");
+      return;
+    }
+    if (!allowDownloadAttempt(req.ip ?? "unknown")) {
+      page(429, "Too many attempts. Try again in a few minutes.");
+      return;
+    }
+    const code = normalizeConnectCode(typeof req.body?.code === "string" ? req.body.code : "");
+    const expected = Buffer.from(data.appDownload.code);
+    const given = Buffer.from(code);
+    if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
+      page(403, "That download code is not valid.");
+      return;
+    }
+    res.type("application/vnd.android.package-archive");
+    res.download(path.join(releaseDir, APK_FILENAME), `panel-${data.appRelease.versionName}.apk`);
+  });
 
   app.post(
     "/api/admin/login",

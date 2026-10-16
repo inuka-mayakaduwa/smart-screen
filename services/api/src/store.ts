@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { defaultDisplaySettings, normalizeDisplaySettings } from "./display.js";
-import type { AppRelease, DataFile, Room, RoomSession, WhiteboardScene } from "./types.js";
+import type { AppDownload, AppRelease, DataFile, Room, RoomSession, WhiteboardScene } from "./types.js";
 
 const EMPTY: DataFile = {
   rooms: [],
@@ -13,6 +13,7 @@ const EMPTY: DataFile = {
   displayDefaults: defaultDisplaySettings(),
   sessions: [],
   appRelease: null,
+  appDownload: null,
 };
 
 export type Store = {
@@ -41,6 +42,7 @@ export function createStore(dataDir: string): Store {
       displayDefaults: normalizeDisplaySettings(parsed.displayDefaults),
       sessions: (parsed.sessions ?? []).map(normalizeSession),
       appRelease: normalizeRelease(parsed.appRelease),
+      appDownload: normalizeDownload(parsed.appDownload),
     };
   }
 
@@ -74,6 +76,12 @@ function normalizeRelease(value: AppRelease | null | undefined): AppRelease | nu
     uploadedAt: typeof value.uploadedAt === "string" ? value.uploadedAt : new Date(0).toISOString(),
     notes: typeof value.notes === "string" ? value.notes : "",
   };
+}
+
+function normalizeDownload(value: AppDownload | null | undefined): AppDownload | null {
+  if (!value || typeof value !== "object") return null;
+  if (typeof value.code !== "string" || !/^[A-Z0-9]{8}$/.test(value.code)) return null;
+  return { code: value.code, createdAt: typeof value.createdAt === "string" ? value.createdAt : new Date(0).toISOString() };
 }
 
 function normalizeSession(session: RoomSession): RoomSession {

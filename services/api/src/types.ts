@@ -114,6 +114,11 @@ export type AppRelease = {
   notes: string;
 };
 
+export type AppDownload = {
+  code: string;
+  createdAt: string;
+};
+
 export type DataFile = {
   rooms: Room[];
   images: RoomImage[];
@@ -124,6 +129,7 @@ export type DataFile = {
   displayDefaults: PanelDisplaySettings;
   sessions: RoomSession[];
   appRelease: AppRelease | null;
+  appDownload: AppDownload | null;
 };
 
 export type Meeting = {
