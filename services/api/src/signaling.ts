@@ -93,6 +93,7 @@ export function attachSignaling(server: Server, store: Store) {
       if (!current) return;
       if (isBinary) {
         if (peer.role !== "sender" || !current.receiver) return;
+        if (current.senders.get(peer.slot)?.socket !== socket) return;
         const body = asBuffer(raw);
         if (body.length < 1 || body.length > MAX_FRAME_BYTES) return;
         frames += 1;
@@ -112,6 +113,7 @@ export function attachSignaling(server: Server, store: Store) {
       }
       if (peer.role === "sender" && current.receiver) {
         shareLog(`sender code=${peer.code} type=${message.type ?? "unknown"}`);
+        if (message.type === "hangup") current.senders.delete(peer.slot);
         send(current.receiver.socket, { ...message, slot: peer.slot });
         return;
       }
@@ -129,7 +131,9 @@ export function attachSignaling(server: Server, store: Store) {
         if (!sender) return;
         if (message.type === "hangup") {
           shareLog(`hangup code=${peer.code} slot=${slot}`);
-          send(sender.socket, message);
+          current.senders.delete(slot);
+          send(sender.socket, { type: "hangup", slot });
+          send(socket, { type: "peer-left", slot });
         }
       }
     });

@@ -56,9 +56,82 @@ button {
   cursor: pointer;
 }
 
-button:disabled { opacity: 0.7; }
+button.hold { background: #1c1915; }
 
-.status { color: #5e574e; min-height: 1.4em; }
+button.hold.on { background: #8a5a12; }
+
+button.stop {
+  background: transparent;
+  color: #8a3b32;
+  border: 1px solid #e4cfc8;
+}
+
+button:disabled { opacity: 0.7; cursor: default; }
+
+.prelive {
+  position: fixed;
+  width: 320px;
+  height: 180px;
+  left: -400px;
+  top: 0;
+  overflow: hidden;
+}
+
+.live { order: 3; width: min(640px, 100%); margin: 4px 0 18px; }
+
+.preview-wrap { position: relative; }
+
+.stage {
+  aspect-ratio: 16 / 9;
+  background: #101410;
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.hold-badge {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 12px 16px;
+  text-align: center;
+  color: white;
+  background: rgba(16, 20, 16, 0.78);
+  font-weight: 560;
+}
+
+.live-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px;
+  font-size: 18px;
+}
+
+.live-label.held { color: #8a5a12; }
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #0c6b52;
+  box-shadow: 0 0 0 0 rgba(12, 107, 82, 0.55);
+  animation: pulse 1.6s ease-out infinite;
+}
+
+.live-label.held .dot {
+  background: #8a5a12;
+  animation: none;
+}
+
+@keyframes pulse {
+  70% { box-shadow: 0 0 0 8px rgba(12, 107, 82, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(12, 107, 82, 0); }
+}
+
+.actions { order: 4; display: flex; flex-wrap: wrap; gap: 10px; }
+
+.status { order: 5; color: #5e574e; min-height: 1.4em; }
 
 @media (max-width: 700px) {
   main { padding: 24px; }

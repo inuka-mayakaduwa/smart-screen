@@ -1,15 +1,32 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
 const initialCode = codeFromLocation();
 const apiBase = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 
+type ShareControls = {
+  stop: () => void;
+  setHeld: (held: boolean) => void;
+};
+
 function App() {
   const [code, setCode] = useState(initialCode);
   const [status, setStatus] = useState(initialCode ? "Ready to share this screen." : "Enter the code on the room panel.");
-  const [sharing, setSharing] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [live, setLive] = useState(false);
+  const [held, setHeld] = useState(false);
+  const controls = useRef<ShareControls | null>(null);
+  const previewHost = useRef<HTMLDivElement>(null);
   const socketUrl = useMemo(() => signalingUrl(apiBase, normalize(code)), [code]);
+
+  function finish(message: string) {
+    controls.current = null;
+    setHeld(false);
+    setLive(false);
+    setStarting(false);
+    setStatus(message);
+  }
 
   async function share(event: FormEvent) {
     event.preventDefault();
@@ -22,7 +39,8 @@ function App() {
     url.pathname = `/${roomCode}`;
     url.searchParams.delete("code");
     window.history.replaceState(null, "", url);
-    setSharing(true);
+    setStarting(true);
+    setHeld(false);
     setStatus("Asking the browser for the screen…");
     try {
       const session = await fetch(`${apiBase}/api/share/${roomCode}`);
@@ -32,39 +50,92 @@ function App() {
       }
       await session.json();
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-      await publish(stream, socketUrl, setStatus);
+      await publish(stream, socketUrl, {
+        onStatus: setStatus,
+        onReady: (next) => {
+          controls.current = next;
+          setStarting(false);
+          setLive(true);
+          setStatus("You are sharing your screen.");
+        },
+        onEnded: finish,
+        previewHost: previewHost.current,
+      });
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Could not start sharing");
-      setSharing(false);
+      const cancelled = error instanceof DOMException && (error.name === "NotAllowedError" || error.name === "AbortError");
+      finish(cancelled ? "Screen sharing was cancelled." : error instanceof Error ? error.message : "Could not start sharing");
     }
+  }
+
+  function toggleHold() {
+    const next = !held;
+    setHeld(next);
+    controls.current?.setHeld(next);
   }
 
   return (
     <main>
-      <p className="eyebrow">Room receiver</p>
-      <h1>Share to the panel</h1>
-      <form onSubmit={share}>
-        <label>
-          Room code
-          <input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} autoCapitalize="characters" />
-        </label>
-        <button type="submit" disabled={sharing}>
-          {sharing ? "Sharing" : "Share screen"}
-        </button>
-      </form>
-      <p className="status">{status}</p>
+      <div className={live ? "live" : "prelive"}>
+        <div className="preview-wrap">
+          <div className="stage" ref={previewHost} />
+          {held ? <div className="hold-badge">Hold Screen</div> : null}
+        </div>
+      </div>
+      {live ? (
+        <>
+          <p className="eyebrow">{held ? "Hold Screen" : "Sharing"}</p>
+          <h1>You are sharing your screen</h1>
+          <p className={held ? "live-label held" : "live-label"}>
+            <span className="dot" />
+            {held ? "Hold Screen" : "Live"}
+          </p>
+          <div className="actions">
+            <button type="button" className={held ? "hold on" : "hold"} onClick={toggleHold}>
+              {held ? "Resume" : "Hold Screen"}
+            </button>
+            <button type="button" className="stop" onClick={() => controls.current?.stop()}>
+              Stop sharing
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="eyebrow">Room receiver</p>
+          <h1>Share to the panel</h1>
+          <form onSubmit={share}>
+            <label>
+              Room code
+              <input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} autoCapitalize="characters" disabled={starting} />
+            </label>
+            <button type="submit" disabled={starting}>
+              {starting ? "Starting…" : "Share screen"}
+            </button>
+          </form>
+        </>
+      )}
+      <p className="status" role="status">{status}</p>
     </main>
   );
 }
 
-async function publish(stream: MediaStream, socketUrl: string, setStatus: (value: string) => void) {
+async function publish(
+  stream: MediaStream,
+  socketUrl: string,
+  hooks: {
+    onStatus: (value: string) => void;
+    onReady: (controls: ShareControls) => void;
+    onEnded: (status: string) => void;
+    previewHost: HTMLElement | null;
+  },
+) {
   const preview = document.createElement("video");
   preview.srcObject = stream;
   preview.muted = true;
   preview.playsInline = true;
   preview.autoplay = true;
-  preview.style.cssText = "position:fixed;width:320px;height:180px;left:-400px;top:0;opacity:1";
-  document.body.appendChild(preview);
+  preview.style.cssText = "width:100%;height:100%;object-fit:contain;background:#101410;display:block";
+  if (hooks.previewHost) hooks.previewHost.replaceChildren(preview);
+  else document.body.appendChild(preview);
   await new Promise<void>((resolve) => {
     if (preview.videoWidth > 0) resolve();
     else preview.onloadedmetadata = () => resolve();
@@ -89,18 +160,62 @@ async function publish(stream: MediaStream, socketUrl: string, setStatus: (value
   let seenWidth = 0;
   let slow = 0;
   let fast = 0;
+  let held = false;
   const outbound: ArrayBuffer[] = [];
   const track = stream.getVideoTracks()[0];
   const capturer = openGrabber(track);
 
-  function stop(status: string) {
+  function stop(status: string, notify: boolean) {
     if (finished) return;
     finished = true;
+    held = false;
     window.clearTimeout(timer);
+    if (notify && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({ type: "hangup" }));
+      } catch {
+        // The socket is already going away.
+      }
+    }
     stream.getTracks().forEach((item) => item.stop());
     preview.remove();
-    setStatus(status);
     if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close();
+    hooks.onEnded(status);
+  }
+
+  function setHeld(next: boolean) {
+    if (finished) return;
+    held = next;
+    window.clearTimeout(timer);
+    if (!held) {
+      hooks.onStatus("You are sharing your screen.");
+      schedule();
+      return;
+    }
+    hooks.onStatus("Hold Screen. The panel is keeping this frame.");
+    const paintHold = () => {
+      if (sending) {
+        window.setTimeout(paintHold, 20);
+        return;
+      }
+      void sendHeldFrame();
+    };
+    paintHold();
+  }
+
+  async function sendHeldFrame() {
+    if (!context || finished || !held) return;
+    try {
+      if (canvas.width < 2) {
+        await grabFrame(capturer, preview, canvas, context, activeWidth || availableWidth() || 1280, quality);
+      }
+      if (!held || finished || canvas.width < 2) return;
+      stampHold(context, canvas.width, canvas.height);
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+      if (blob && held && ws.readyState === WebSocket.OPEN) ws.send(await blob.arrayBuffer());
+    } catch {
+      // The last frame already on the panel stays there.
+    }
   }
 
   function schedule() {
@@ -207,7 +322,7 @@ async function publish(stream: MediaStream, socketUrl: string, setStatus: (value
   }
 
   async function tick() {
-    if (finished || sending) return;
+    if (finished || sending || held) return;
     if (!context || ws.readyState !== WebSocket.OPEN) {
       schedule();
       return;
@@ -226,6 +341,7 @@ async function publish(stream: MediaStream, socketUrl: string, setStatus: (value
     const started = performance.now();
     try {
       const packet = await grabFrame(capturer, preview, canvas, context, activeWidth, quality);
+      if (finished || held) return;
       if (packet && ws.readyState === WebSocket.OPEN) {
         if (latency === "queue") {
           outbound.push(packet);
@@ -236,14 +352,14 @@ async function publish(stream: MediaStream, socketUrl: string, setStatus: (value
         if (!sent) {
           sent = true;
           debug(`sent first frame bytes=${packet.byteLength} width=${canvas.width}`);
-          setStatus("Sending this screen to the panel.");
+          hooks.onStatus("You are sharing your screen.");
         }
       }
     } catch {
-      if (!sent) setStatus("Waiting for the first picture from this screen…");
+      if (!sent) hooks.onStatus("Waiting for the first picture from this screen…");
     } finally {
       sending = false;
-      if (!finished) {
+      if (!finished && !held) {
         const elapsed = performance.now() - started;
         const behind = elapsed > delay * 1.2 || outbound.length > 4 || (latency === "skip" && ws.bufferedAmount > 500_000);
         if (behind && (widthSetting < 0 || fpsSetting <= 0)) {
@@ -286,24 +402,37 @@ async function publish(stream: MediaStream, socketUrl: string, setStatus: (value
     if (typeof event.data !== "string") return;
     const message = JSON.parse(event.data) as { type?: string; width?: number; fps?: number; quality?: number };
     if (message.type === "config") applyConfig(message);
-    if (message.type === "ready" && !timer) {
+    if (message.type === "ready" && !timer && !held) {
       debug("panel receiver is connected");
-      setStatus("Panel is connected. Sending the picture…");
+      hooks.onStatus("You are sharing your screen.");
       void tick();
     }
-    if (message.type === "full") stop("This room is already showing 4 screens.");
-    if (message.type === "peer-left" || message.type === "hangup" || message.type === "replaced") {
-      stop("The panel left the share.");
-    }
+    if (message.type === "full") stop("This room is already showing 4 screens.", false);
+    if (message.type === "hangup") stop("The panel stopped the share.", false);
+    if (message.type === "peer-left" || message.type === "replaced") stop("The panel left the share.", false);
   };
-  ws.onerror = () => setStatus("Could not reach the room signal server.");
+  ws.onerror = () => hooks.onStatus("Could not reach the room signal server.");
   ws.onclose = () => {
-    if (!finished) stop("The panel left the share.");
+    if (!finished) stop("The panel left the share.", false);
   };
   track?.addEventListener("ended", () => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "hangup" }));
-    stop("Sharing stopped.");
+    stop("Sharing stopped.", true);
   });
+  hooks.onReady({
+    stop: () => stop("Sharing stopped.", true),
+    setHeld,
+  });
+}
+
+function stampHold(context: CanvasRenderingContext2D, width: number, height: number) {
+  const bar = Math.max(56, Math.round(height * 0.08));
+  context.fillStyle = "rgba(16, 20, 16, 0.78)";
+  context.fillRect(0, height - bar, width, bar);
+  context.fillStyle = "#ffffff";
+  context.font = `600 ${Math.max(22, Math.round(bar * 0.42))}px Outfit, sans-serif`;
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText("Hold Screen", width / 2, height - bar / 2);
 }
 
 function openGrabber(track: MediaStreamTrack | undefined) {

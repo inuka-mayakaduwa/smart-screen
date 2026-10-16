@@ -89,25 +89,69 @@ Do not add `Calendars.ReadWrite` or application permissions such as `Calendars.R
 
 The panel project is `apps/room`. Screen receiving runs in the system WebView, so it can be tried in Expo Go. The sideloaded APK is what you install on the room panel. Meet and Teams must still be installed on that device for Join.
 
-From `apps/room`, with an [Expo account](https://expo.dev) signed in:
+From `apps/room/android`:
 
 ```powershell
-npm install
-npx eas build -p android --profile preview
+.\gradlew.bat assembleRelease
 ```
 
-`eas.json` builds an APK (`buildType: apk`), not a Play Store bundle.
+That builds the release APK at `app\build\outputs\apk\release\app-release.apk`. With the panel connected and USB debugging on, install it with `adb install -r app\build\outputs\apk\release\app-release.apk`.
+
+The `android` folder is generated from `apps/room` with `npx expo prebuild --platform android`. Run that again after changing the version in `app.json`, then run `.\gradlew.bat assembleRelease` again, or the APK keeps the previous version code.
 
 On the panel:
 
-1. Allow install from unknown sources.
-2. Copy the APK over USB or download it, then install it. From a computer: `adb install path\to\app.apk`.
-3. Install Google Meet (`com.google.android.apps.meetings`) and Microsoft Teams (`com.microsoft.teams`) on the same panel. Join opens those apps. If one is missing, the panel says so.
-4. Open Smart Room, enter the control server address and the Connect token.
+1. Allow install from unknown sources if Android asks when the installer opens.
+2. Install Google Meet (`com.google.android.apps.meetings`) and Microsoft Teams (`com.microsoft.teams`) on the same panel. Join opens those apps. If one is missing, the panel says so.
+3. Open Smart Room, enter the Connect URL and the Connect token.
 
 The same APK is used for every room. The token chooses the room. Room name, images, and meta come from the control API after that.
 
-Later builds can install themselves. In admin Settings, publish the APK with a version name and a version code higher than the one already on the panels. Each panel downloads it from the control server and opens the Android installer. The panel Settings screen shows the installed version and an update method: Manual Check, Prompt on launch, or Force. The first APK that contains this updater still has to be installed once by hand. Raise `android.versionCode` in `apps/room/app.json` for every build you publish.
+Later builds can install themselves. The first APK that contains this updater still has to be installed once by hand.
+
+The panel does not send its version to the server. Each side keeps its own number, and the panel compares them.
+
+The installed APK has two values from `apps/room/app.json`:
+
+- **Version name** (`expo.version`) is the label shown in Settings. This build is `dev-1.0.2`.
+- **Version code** (`android.versionCode`) is the integer Android stores as the build number. This build is `2`. `npx expo prebuild --platform android` writes both values into `apps/room/android` from `app.json`. Run prebuild again after changing them, then `.\gradlew.bat assembleRelease`, or the APK keeps the previous code.
+
+The control server stores one published APK. In admin Settings, upload it with a version name, a version code, and optional notes. A connected panel requests that record. When the published version code is greater than the version code installed on the device, the panel offers an update. The version name is the label only.
+
+Settings → Panel chooses what happens next:
+
+- **Manual Check** waits until someone taps Check for update, then Install.
+- **Prompt on launch** asks the next time the panel app opens.
+- **Force** stays on the update screen until the installer starts.
+
+Install downloads the APK from the control server and opens the Android package installer.
+
+### Build dev-1.0.2
+
+`apps/room/app.json` is set to version name `dev-1.0.2` and version code `2`. From `apps/room`, write that version into the native project, then build:
+
+```powershell
+npx expo prebuild --platform android
+cd android
+.\gradlew.bat assembleRelease
+```
+
+Install it on the connected panel:
+
+```powershell
+adb install -r app\build\outputs\apk\release\app-release.apk
+```
+
+In admin Settings, publish `apps/room/android/app/build/outputs/apk/release/app-release.apk` with:
+
+- Version name: `dev-1.0.2`
+- Version code: `2`
+
+The version code in the form must match `android.versionCode` in the APK, and it must be higher than the code already published. If the form rejects `2`, raise `android.versionCode` in `apps/room/app.json` above the published code, run prebuild and `.\gradlew.bat assembleRelease` again, and publish that same number.
+
+On a panel still on version code 1, open Settings → Panel and use Check for update, or reopen the app when the update method is Prompt on launch or Force.
+
+The hold button and the "you are sharing" view are in `apps/share-web`. The panel's stop-and-return behavior is in this APK. Deploy the share site and the control API with the panel build.
 
 The APK is a fullscreen landscape app without device-owner setup. A locked kiosk that returns Home to this screen, while still allowing Meet and Teams, depends on the panel image and is not configured by the APK.
 
