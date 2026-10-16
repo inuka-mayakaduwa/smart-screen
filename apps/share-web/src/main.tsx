@@ -154,7 +154,10 @@ async function publish(
   preview.playsInline = true;
   preview.autoplay = true;
   preview.style.cssText = "width:100%;height:100%;object-fit:contain;background:#101410;display:block";
-  if (hooks.previewHost) hooks.previewHost.replaceChildren(preview);
+  const frozenPreview = document.createElement("img");
+  frozenPreview.alt = "";
+  frozenPreview.style.cssText = "position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#101410;display:none";
+  if (hooks.previewHost) hooks.previewHost.replaceChildren(preview, frozenPreview);
   else document.body.appendChild(preview);
   await new Promise<void>((resolve) => {
     if (preview.videoWidth > 0) resolve();
@@ -198,7 +201,9 @@ async function publish(
       }
     }
     stream.getTracks().forEach((item) => item.stop());
+    showFrozenPreview(false);
     preview.remove();
+    frozenPreview.remove();
     if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close();
     hooks.onEnded(status);
   }
@@ -206,6 +211,7 @@ async function publish(
   function setDisplayMode(next: DisplayMode) {
     if (finished) return;
     displayMode = next;
+    showFrozenPreview(displayMode === "frozen");
     window.clearTimeout(timer);
     if (displayMode === "live") {
       sendDisplayState("live");
@@ -223,6 +229,22 @@ async function publish(
       void sendStillFrame(stillMode);
     };
     paintStill();
+  }
+
+  function showFrozenPreview(on: boolean) {
+    if (!on || preview.videoWidth < 2) {
+      frozenPreview.style.display = "none";
+      frozenPreview.removeAttribute("src");
+      return;
+    }
+    const snap = document.createElement("canvas");
+    snap.width = preview.videoWidth;
+    snap.height = preview.videoHeight;
+    const snapContext = snap.getContext("2d");
+    if (!snapContext) return;
+    snapContext.drawImage(preview, 0, 0);
+    frozenPreview.src = snap.toDataURL("image/jpeg", 0.85);
+    frozenPreview.style.display = "block";
   }
 
   function sendDisplayState(state: DisplayMode) {

@@ -82,6 +82,7 @@ button:disabled { opacity: 0.7; cursor: default; }
 .preview-wrap { position: relative; }
 
 .stage {
+  position: relative;
   aspect-ratio: 16 / 9;
   background: #101410;
   border-radius: 18px;
@@ -109,6 +110,7 @@ button:disabled { opacity: 0.7; cursor: default; }
 
 .freeze-badge {
   position: absolute;
+  z-index: 2;
   top: 12px;
   right: 12px;
   display: grid;
