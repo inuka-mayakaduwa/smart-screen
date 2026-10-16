@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { api, getToken, setToken } from "./api";
+import { DebugLogsPage } from "./DebugLogsPage";
 import { LoginPage } from "./LoginPage";
 import { RoomPage } from "./RoomPage";
 import { RoomsPage } from "./RoomsPage";
@@ -50,6 +51,7 @@ export function App() {
         <nav>
           <Link to="/rooms">Rooms</Link>
           <Link to="/settings/display">Display defaults</Link>
+          <Link to="/debug-logs">Debug logs</Link>
           <button className="linkish" type="button" onClick={signOut}>
             Sign out
           </button>
@@ -61,6 +63,7 @@ export function App() {
           <Route path="/rooms" element={<RoomsPage />} />
           <Route path="/rooms/:roomId" element={<RoomPage />} />
           <Route path="/settings/display" element={<SettingsPage />} />
+          <Route path="/debug-logs" element={<DebugLogsPage />} />
           <Route path="*" element={<Navigate to="/rooms" replace />} />
         </Routes>
       </main>

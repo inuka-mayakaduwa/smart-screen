@@ -16,6 +16,7 @@ import {
   microsoftAuthUrl,
   microsoftConfigured,
 } from "./microsoft.js";
+import { createDebugLogs, formatDebugReport, normalizeDebugLines } from "./debugLogs.js";
 import { createShareSession, getShareSession } from "./signaling.js";
 import { APK_FILENAME, APK_LIMIT_BYTES, assertApkFile, presentRelease, readReleaseFields } from "./release.js";
 import { endOpenSession, ensureSession, parseOpenedBy, sessionByCode } from "./sessions.js";
@@ -59,6 +60,7 @@ export function createApp(store: Store, config: Config): AppContext {
   const app = express();
   const uploadDir = path.join(path.dirname(store.filePath), "uploads");
   const releaseDir = path.join(path.dirname(store.filePath), "releases");
+  const debugLogs = createDebugLogs(path.join(path.dirname(store.filePath), "debug-logs"));
   mkdirSync(uploadDir, { recursive: true });
   mkdirSync(releaseDir, { recursive: true });
   const apkUpload = multer({
@@ -159,7 +161,7 @@ export function createApp(store: Store, config: Config): AppContext {
     const data = store.read();
     res.json({
       rooms: data.rooms
-        .map((room) => summarizeRoom(data, room, baseUrl(req)))
+        .map((room) => summarizeRoom(data, room, config.publicApiUrl))
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     });
   });
@@ -187,14 +189,14 @@ export function createApp(store: Store, config: Config): AppContext {
       store.update((data) => {
         data.rooms.push(room);
       });
-      res.status(201).json({ room: presentAdminRoom(store.read(), room, baseUrl(req)) });
+      res.status(201).json({ room: presentAdminRoom(store.read(), room, config.publicApiUrl) });
     }),
   );
 
   app.get("/api/admin/rooms/:id", requireAdmin, (req, res) => {
     const data = store.read();
     const room = findRoom(data.rooms, req.params.id);
-    res.json({ room: presentAdminRoom(data, room, baseUrl(req)) });
+    res.json({ room: presentAdminRoom(data, room, config.publicApiUrl) });
   });
 
   app.patch(
@@ -234,7 +236,7 @@ export function createApp(store: Store, config: Config): AppContext {
         room.updatedAt = new Date().toISOString();
         return room;
       });
-      res.json({ room: presentAdminRoom(store.read(), updated, baseUrl(req)) });
+      res.json({ room: presentAdminRoom(store.read(), updated, config.publicApiUrl) });
     }),
   );
 
@@ -288,7 +290,7 @@ export function createApp(store: Store, config: Config): AppContext {
         if (!room.backgroundImageId) room.backgroundImageId = image.id;
         room.updatedAt = new Date().toISOString();
       });
-      res.status(201).json({ image: { id: image.id, url: mediaUrl(baseUrl(req), image.id), label: image.label } });
+      res.status(201).json({ image: { id: image.id, url: mediaUrl(config.publicApiUrl, image.id), label: image.label } });
     }),
   );
 
@@ -456,7 +458,7 @@ export function createApp(store: Store, config: Config): AppContext {
       const { meetings, sources } = await loadRoomMeetings(store, config, currentRoom.id, currentRoom.timezone);
       const display = resolveDisplaySettings(fresh.displayDefaults, currentRoom.displayOverrides);
       res.json({
-        room: presentDisplayRoom(fresh, currentRoom, baseUrl(req)),
+        room: presentDisplayRoom(fresh, currentRoom, config.publicApiUrl),
         meetings,
         sources,
         share: normalizeShare(currentRoom.share),
@@ -534,6 +536,64 @@ export function createApp(store: Store, config: Config): AppContext {
       res.download(file, `smart-room-${release.versionName}.apk`);
     }),
   );
+
+  app.post(
+    "/api/display/debug-logs",
+    route((req, res) => {
+      const { device, room } = requireDevice(req);
+      let lines;
+      try {
+        lines = normalizeDebugLines((req.body as { lines?: unknown } | undefined)?.lines);
+      } catch (error) {
+        throw new HttpError(400, error instanceof Error ? error.message : "Debug logs are invalid");
+      }
+      if (lines.length === 0) throw new HttpError(400, "There are no debug lines to send");
+      const report = {
+        id: createId(),
+        deviceId: device.id,
+        deviceLabel: device.label,
+        roomId: room.id,
+        roomName: room.name,
+        submittedAt: new Date().toISOString(),
+        lines,
+      };
+      debugLogs.save(report);
+      res.status(201).json({ id: report.id, submittedAt: report.submittedAt, lineCount: lines.length });
+    }),
+  );
+
+  app.get("/api/admin/debug-logs", requireAdmin, (_req, res) => {
+    res.json({ reports: debugLogs.list() });
+  });
+
+  app.get("/api/admin/debug-logs/:id/export", requireAdmin, (req, res) => {
+    const report = debugLogs.read(req.params.id);
+    if (!report) {
+      res.status(404).json({ error: "Debug log not found" });
+      return;
+    }
+    const stamp = report.submittedAt.replace(/[:.]/g, "-");
+    res.type("text/plain; charset=utf-8");
+    res.setHeader("content-disposition", `attachment; filename="debug-${stamp}.log"`);
+    res.send(formatDebugReport(report));
+  });
+
+  app.get("/api/admin/debug-logs/:id", requireAdmin, (req, res) => {
+    const report = debugLogs.read(req.params.id);
+    if (!report) {
+      res.status(404).json({ error: "Debug log not found" });
+      return;
+    }
+    res.json({ report, text: formatDebugReport(report) });
+  });
+
+  app.delete("/api/admin/debug-logs/:id", requireAdmin, (req, res) => {
+    if (!debugLogs.remove(req.params.id)) {
+      res.status(404).json({ error: "Debug log not found" });
+      return;
+    }
+    res.status(204).end();
+  });
 
   app.get("/api/whiteboard/:code", (req, res) => {
     const code = normalizeConnectCode(req.params.code);
@@ -735,12 +795,6 @@ function extensionFor(mimeType: string): string {
   if (mimeType === "image/webp") return ".webp";
   if (mimeType === "image/gif") return ".gif";
   return ".jpg";
-}
-
-function baseUrl(req: Request): string {
-  const host = req.get("host");
-  if (!host) return "";
-  return `${req.protocol}://${host}`;
 }
 
 function mediaUrl(base: string, imageId: string): string {

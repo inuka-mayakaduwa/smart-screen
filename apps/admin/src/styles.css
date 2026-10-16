@@ -441,8 +441,55 @@ input, select {
 .split { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.7fr); gap: 18px; align-items: start; }
 .split > * { min-width: 0; }
 
+.debug-layout {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.debug-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: calc(100vh - 220px);
+  overflow: auto;
+}
+
+.debug-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  padding: 12px 14px;
+  background: #fffdf9;
+  border: 1px solid #e3dbd0;
+  border-radius: 14px;
+}
+
+.debug-item.is-on { border-color: #0c6b52; box-shadow: 0 0 0 2px rgba(12, 107, 82, 0.16); }
+.debug-item span, .debug-item small { color: #6d655c; font-size: 13px; }
+
+.debug-view-wrap .actions { justify-content: space-between; margin-bottom: 12px; }
+.debug-view-wrap .actions p { margin: 2px 0 0; }
+.debug-view-wrap .actions > div:first-child { margin-right: auto; }
+
+.debug-view {
+  margin: 0;
+  max-height: calc(100vh - 280px);
+  overflow: auto;
+  padding: 16px;
+  border-radius: 14px;
+  background: #1c1915;
+  color: #f6f1e8;
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
 @media (max-width: 980px) {
-  .app-shell, .split { grid-template-columns: 1fr; }
+  .app-shell, .split, .debug-layout { grid-template-columns: 1fr; }
   .main { padding: 24px 18px 48px; }
   .page-title { font-size: 36px; }
   .token { font-size: 42px; }
