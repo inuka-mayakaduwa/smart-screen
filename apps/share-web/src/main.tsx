@@ -7,22 +7,24 @@ const apiBase = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 
 type ShareControls = {
   stop: () => void;
-  setHeld: (held: boolean) => void;
+  setDisplayMode: (mode: DisplayMode) => void;
 };
+
+type DisplayMode = "live" | "paused" | "frozen";
 
 function App() {
   const [code, setCode] = useState(initialCode);
   const [status, setStatus] = useState(initialCode ? "Ready to share this screen." : "Enter the code on the room panel.");
   const [starting, setStarting] = useState(false);
   const [live, setLive] = useState(false);
-  const [held, setHeld] = useState(false);
+  const [displayMode, setDisplayMode] = useState<DisplayMode>("live");
   const controls = useRef<ShareControls | null>(null);
   const previewHost = useRef<HTMLDivElement>(null);
   const socketUrl = useMemo(() => signalingUrl(apiBase, normalize(code)), [code]);
 
   function finish(message: string) {
     controls.current = null;
-    setHeld(false);
+    setDisplayMode("live");
     setLive(false);
     setStarting(false);
     setStatus(message);
@@ -40,7 +42,7 @@ function App() {
     url.searchParams.delete("code");
     window.history.replaceState(null, "", url);
     setStarting(true);
-    setHeld(false);
+    setDisplayMode("live");
     setStatus("Asking the browser for the screen…");
     try {
       const session = await fetch(`${apiBase}/api/share/${roomCode}`);
@@ -67,10 +69,10 @@ function App() {
     }
   }
 
-  function toggleHold() {
-    const next = !held;
-    setHeld(next);
-    controls.current?.setHeld(next);
+  function toggleDisplayMode(next: Exclude<DisplayMode, "live">) {
+    const mode = displayMode === next ? "live" : next;
+    setDisplayMode(mode);
+    controls.current?.setDisplayMode(mode);
   }
 
   return (
@@ -78,20 +80,38 @@ function App() {
       <div className={live ? "live" : "prelive"}>
         <div className="preview-wrap">
           <div className="stage" ref={previewHost} />
-          {held ? <div className="hold-badge">Hold Screen</div> : null}
+          {displayMode === "paused" ? (
+            <div className="pause-cover" aria-label="Display paused">
+              <span className="rest-icon">☾</span>
+              <strong>Display paused</strong>
+              <span>Ready when you are</span>
+            </div>
+          ) : null}
+          {displayMode === "frozen" ? <div className="freeze-badge" aria-label="Frame frozen">❄</div> : null}
         </div>
       </div>
       {live ? (
         <>
-          <p className="eyebrow">{held ? "Hold Screen" : "Sharing"}</p>
+          <p className="eyebrow">{displayMode === "paused" ? "Display paused" : displayMode === "frozen" ? "Frame frozen" : "Sharing"}</p>
           <h1>You are sharing your screen</h1>
-          <p className={held ? "live-label held" : "live-label"}>
+          <p className={displayMode === "live" ? "live-label" : "live-label held"}>
             <span className="dot" />
-            {held ? "Hold Screen" : "Live"}
+            {displayMode === "paused" ? "Paused" : displayMode === "frozen" ? "Frozen" : "Live"}
           </p>
           <div className="actions">
-            <button type="button" className={held ? "hold on" : "hold"} onClick={toggleHold}>
-              {held ? "Resume" : "Hold Screen"}
+            <button
+              type="button"
+              className={displayMode === "paused" ? "pause on" : "pause"}
+              onClick={() => toggleDisplayMode("paused")}
+            >
+              {displayMode === "paused" ? "Resume live" : "Pause display"}
+            </button>
+            <button
+              type="button"
+              className={displayMode === "frozen" ? "freeze on" : "freeze"}
+              onClick={() => toggleDisplayMode("frozen")}
+            >
+              {displayMode === "frozen" ? "Resume live" : "Freeze frame"}
             </button>
             <button type="button" className="stop" onClick={() => controls.current?.stop()}>
               Stop sharing
@@ -160,7 +180,7 @@ async function publish(
   let seenWidth = 0;
   let slow = 0;
   let fast = 0;
-  let held = false;
+  let displayMode: DisplayMode = "live";
   const outbound: ArrayBuffer[] = [];
   const track = stream.getVideoTracks()[0];
   const capturer = openGrabber(track);
@@ -168,7 +188,7 @@ async function publish(
   function stop(status: string, notify: boolean) {
     if (finished) return;
     finished = true;
-    held = false;
+    displayMode = "live";
     window.clearTimeout(timer);
     if (notify && ws.readyState === WebSocket.OPEN) {
       try {
@@ -183,36 +203,46 @@ async function publish(
     hooks.onEnded(status);
   }
 
-  function setHeld(next: boolean) {
+  function setDisplayMode(next: DisplayMode) {
     if (finished) return;
-    held = next;
+    displayMode = next;
     window.clearTimeout(timer);
-    if (!held) {
+    if (displayMode === "live") {
+      sendDisplayState("live");
       hooks.onStatus("You are sharing your screen.");
       schedule();
       return;
     }
-    hooks.onStatus("Hold Screen. The panel is keeping this frame.");
-    const paintHold = () => {
+    hooks.onStatus(displayMode === "paused" ? "The panel is showing a resting screen." : "The panel is keeping the current frame.");
+    const stillMode = displayMode;
+    const paintStill = () => {
       if (sending) {
-        window.setTimeout(paintHold, 20);
+        window.setTimeout(paintStill, 20);
         return;
       }
-      void sendHeldFrame();
+      void sendStillFrame(stillMode);
     };
-    paintHold();
+    paintStill();
   }
 
-  async function sendHeldFrame() {
-    if (!context || finished || !held) return;
+  function sendDisplayState(state: DisplayMode) {
+    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "display-state", state }));
+  }
+
+  async function sendStillFrame(mode: Exclude<DisplayMode, "live">) {
+    if (!context || finished || displayMode !== mode) return;
     try {
-      if (canvas.width < 2) {
+      if (mode === "paused") {
+        paintRestingImage(canvas, context, activeWidth || availableWidth() || 1280, preview.videoWidth, preview.videoHeight);
+      } else {
         await grabFrame(capturer, preview, canvas, context, activeWidth || availableWidth() || 1280, quality);
       }
-      if (!held || finished || canvas.width < 2) return;
-      stampHold(context, canvas.width, canvas.height);
+      if (displayMode !== mode || finished || canvas.width < 2) return;
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
-      if (blob && held && ws.readyState === WebSocket.OPEN) ws.send(await blob.arrayBuffer());
+      if (blob && displayMode === mode && ws.readyState === WebSocket.OPEN) {
+        ws.send(await blob.arrayBuffer());
+        sendDisplayState(mode);
+      }
     } catch {
       // The last frame already on the panel stays there.
     }
@@ -322,7 +352,7 @@ async function publish(
   }
 
   async function tick() {
-    if (finished || sending || held) return;
+    if (finished || sending || displayMode !== "live") return;
     if (!context || ws.readyState !== WebSocket.OPEN) {
       schedule();
       return;
@@ -341,7 +371,7 @@ async function publish(
     const started = performance.now();
     try {
       const packet = await grabFrame(capturer, preview, canvas, context, activeWidth, quality);
-      if (finished || held) return;
+      if (finished || displayMode !== "live") return;
       if (packet && ws.readyState === WebSocket.OPEN) {
         if (latency === "queue") {
           outbound.push(packet);
@@ -359,7 +389,7 @@ async function publish(
       if (!sent) hooks.onStatus("Waiting for the first picture from this screen…");
     } finally {
       sending = false;
-      if (!finished && !held) {
+      if (!finished && displayMode === "live") {
         const elapsed = performance.now() - started;
         const behind = elapsed > delay * 1.2 || outbound.length > 4 || (latency === "skip" && ws.bufferedAmount > 500_000);
         if (behind && (widthSetting < 0 || fpsSetting <= 0)) {
@@ -402,10 +432,14 @@ async function publish(
     if (typeof event.data !== "string") return;
     const message = JSON.parse(event.data) as { type?: string; width?: number; fps?: number; quality?: number };
     if (message.type === "config") applyConfig(message);
-    if (message.type === "ready" && !timer && !held) {
+    if (message.type === "ready" && !timer) {
       debug("panel receiver is connected");
-      hooks.onStatus("You are sharing your screen.");
-      void tick();
+      if (displayMode === "live") {
+        hooks.onStatus("You are sharing your screen.");
+        void tick();
+      } else {
+        void sendStillFrame(displayMode);
+      }
     }
     if (message.type === "full") stop("This room is already showing 4 screens.", false);
     if (message.type === "hangup") stop("The panel stopped the share.", false);
@@ -420,19 +454,42 @@ async function publish(
   });
   hooks.onReady({
     stop: () => stop("Sharing stopped.", true),
-    setHeld,
+    setDisplayMode,
   });
 }
 
-function stampHold(context: CanvasRenderingContext2D, width: number, height: number) {
-  const bar = Math.max(56, Math.round(height * 0.08));
-  context.fillStyle = "rgba(16, 20, 16, 0.78)";
-  context.fillRect(0, height - bar, width, bar);
-  context.fillStyle = "#ffffff";
-  context.font = `600 ${Math.max(22, Math.round(bar * 0.42))}px Outfit, sans-serif`;
+function paintRestingImage(
+  canvas: HTMLCanvasElement,
+  context: CanvasRenderingContext2D,
+  maxWidth: number,
+  sourceWidth: number,
+  sourceHeight: number,
+) {
+  const width = Math.max(960, Math.min(maxWidth, sourceWidth || maxWidth));
+  const ratio = sourceWidth > 0 && sourceHeight > 0 ? sourceHeight / sourceWidth : 9 / 16;
+  const height = Math.max(540, Math.round(width * ratio));
+  canvas.width = width;
+  canvas.height = height;
+  const background = context.createLinearGradient(0, 0, width, height);
+  background.addColorStop(0, "#173a31");
+  background.addColorStop(1, "#0d1713");
+  context.fillStyle = background;
+  context.fillRect(0, 0, width, height);
+  context.fillStyle = "rgba(141, 206, 186, 0.14)";
+  context.beginPath();
+  context.arc(width * 0.18, height * 0.16, width * 0.2, 0, Math.PI * 2);
+  context.fill();
+  context.fillStyle = "#8dceba";
+  context.font = `500 ${Math.max(56, Math.round(height * 0.13))}px serif`;
   context.textAlign = "center";
   context.textBaseline = "middle";
-  context.fillText("Hold Screen", width / 2, height - bar / 2);
+  context.fillText("☾", width / 2, height * 0.4);
+  context.fillStyle = "#ffffff";
+  context.font = `600 ${Math.max(28, Math.round(height * 0.06))}px Outfit, sans-serif`;
+  context.fillText("Display paused", width / 2, height * 0.57);
+  context.fillStyle = "#b9c9c2";
+  context.font = `400 ${Math.max(18, Math.round(height * 0.032))}px Outfit, sans-serif`;
+  context.fillText("Ready when you are", width / 2, height * 0.66);
 }
 
 function openGrabber(track: MediaStreamTrack | undefined) {
