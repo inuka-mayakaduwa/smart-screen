@@ -954,8 +954,7 @@ function normalize(value: string) {
 }
 
 function formatShareCode(code: string) {
-  if (code.length !== 5) return code;
-  return `${code.slice(0, 2)}-${code.slice(2)}`;
+  return normalize(code);
 }
 
 function signalingUrl(api: string, code: string) {

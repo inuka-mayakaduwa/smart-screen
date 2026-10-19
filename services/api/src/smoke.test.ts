@@ -79,7 +79,7 @@ test("admin creates a room, a panel redeems Connect, and state comes from the AP
       expiresAt: string;
       iceServers: { urls: string }[];
     }>(base, "/api/display/share/sessions", { method: "POST", token: redeemed.deviceToken });
-    assert.match(session.code, /^\d{2}-\d{3}$/);
+    assert.match(session.code, /^\d{5}$/);
     assert.ok(session.sessionId.length > 0);
     const expiresIn = new Date(session.expiresAt).getTime() - Date.now();
     assert.ok(expiresIn > 14 * 60 * 1000 && expiresIn <= 15 * 60 * 1000);

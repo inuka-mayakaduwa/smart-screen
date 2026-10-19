@@ -48,6 +48,7 @@ export function RoomPage() {
       <div className="split">
         <div>
           <ProfileForm room={room} onSaved={reload} onError={setError} />
+          <BrandForm room={room} onSaved={reload} onError={setError} />
           <RoomDisplayPanel room={room} onSaved={reload} onError={setError} />
           <ImagePanel room={room} onChanged={reload} onError={setError} />
           <BackgroundPanel room={room} onChanged={reload} onError={setError} />
@@ -159,6 +160,78 @@ function ProfileForm({
           }}
         >
           {room.status === "active" ? "Retire room" : "Activate room"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function BrandForm({
+  room,
+  onSaved,
+  onError,
+}: {
+  room: RoomDetail;
+  onSaved: () => Promise<void>;
+  onError: (message: string) => void;
+}) {
+  const [brandName, setBrandName] = useState(room.brandName ?? "");
+
+  useEffect(() => {
+    setBrandName(room.brandName ?? "");
+  }, [room]);
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    try {
+      await api(`/api/admin/rooms/${room.id}`, {
+        method: "PATCH",
+        body: { brandName: brandName.trim() || null },
+      });
+      await onSaved();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Could not save branding");
+    }
+  }
+
+  return (
+    <form className="panel stack" onSubmit={save}>
+      <h2>Branding</h2>
+      <p className="muted">Shown on Deep Space layouts. Upload a logo under Images, then mark it as the logo.</p>
+      <label>
+        Brand name
+        <input
+          value={brandName}
+          onChange={(event) => setBrandName(event.target.value)}
+          placeholder="Organization name"
+          maxLength={80}
+        />
+      </label>
+      {room.logoUrl ? (
+        <div className="meta-row" style={{ alignItems: "center" }}>
+          <img src={room.logoUrl} alt="" style={{ width: 40, height: 40, borderRadius: 20, objectFit: "cover" }} />
+          <span className="muted">Current logo</span>
+          <button
+            className="ghost"
+            type="button"
+            onClick={async () => {
+              try {
+                await api(`/api/admin/rooms/${room.id}`, { method: "PATCH", body: { logoImageId: null } });
+                await onSaved();
+              } catch (err) {
+                onError(err instanceof Error ? err.message : "Could not clear the logo");
+              }
+            }}
+          >
+            Clear logo
+          </button>
+        </div>
+      ) : (
+        <p className="muted">No logo selected yet.</p>
+      )}
+      <div className="actions">
+        <button className="primary" type="submit">
+          Save branding
         </button>
       </div>
     </form>
@@ -419,7 +492,7 @@ function ImagePanel({
   return (
     <section className="panel">
       <h2>Images</h2>
-      <p className="muted">The panel uses the background you select. Upload a wide image for the room display.</p>
+      <p className="muted">Uploads are stored on the API data volume. Use one as the room background and optionally one as the brand logo.</p>
       <label className="ghost" style={{ width: "fit-content", padding: "11px 16px", borderRadius: 999, border: "1px solid #d9d0c4" }}>
         Upload image
         <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(event) => upload(event.target.files?.[0])} />
@@ -431,6 +504,7 @@ function ImagePanel({
             <figcaption>
               <span>{image.label}</span>
               {room.backgroundImageId === image.id ? <strong>Background</strong> : null}
+              {room.logoImageId === image.id ? <strong>Logo</strong> : null}
               <button
                 className="ghost"
                 type="button"
@@ -440,6 +514,16 @@ function ImagePanel({
                 }}
               >
                 Use as background
+              </button>
+              <button
+                className="ghost"
+                type="button"
+                onClick={async () => {
+                  await api(`/api/admin/rooms/${room.id}`, { method: "PATCH", body: { logoImageId: image.id } });
+                  await onChanged();
+                }}
+              >
+                Use as logo
               </button>
               <button
                 className="danger"

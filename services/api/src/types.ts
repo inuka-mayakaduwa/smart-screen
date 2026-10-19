@@ -23,6 +23,8 @@ export type Room = {
   name: string;
   timezone: string;
   meta: Record<string, string>;
+  brandName: string | null;
+  logoImageId: string | null;
   backgroundImageId: string | null;
   backgroundKind: RoomBackgroundKind;
   backgroundSolid: string | null;

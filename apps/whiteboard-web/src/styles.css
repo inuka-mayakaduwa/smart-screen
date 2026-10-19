@@ -17,6 +17,15 @@ body {
   flex-direction: column;
 }
 
+.app.embed {
+  background: #ffffff;
+}
+
+.app.embed .board {
+  flex: 1;
+  min-height: 0;
+}
+
 header {
   display: flex;
   align-items: center;
@@ -66,6 +75,14 @@ h1 {
 .board {
   flex: 1;
   min-height: 0;
+}
+
+/* Slightly denser toolbar chrome on the room panel. */
+.board-panel .excalidraw .App-toolbar,
+.board-panel .excalidraw .shapes-section,
+.board-panel .excalidraw .App-menu {
+  --lg-button-size: 2.1rem;
+  --default-button-size: 2rem;
 }
 
 .excalidraw .library-menu-browse-button,

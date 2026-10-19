@@ -15,10 +15,11 @@ test("connect codes ignore spaces and dashes", () => {
   assert.equal(formatConnectCode("ABCDEFGH"), "ABCD-EFGH");
 });
 
-test("share codes are five digits with an optional display hyphen", () => {
+test("share codes are five digits without dashes", () => {
   const code = createShareCode();
   assert.match(code, /^\d{5}$/);
-  assert.equal(formatShareCode(code), `${code.slice(0, 2)}-${code.slice(2)}`);
+  assert.equal(formatShareCode(code), code);
+  assert.equal(formatShareCode("12-345"), "12345");
   assert.equal(normalizeShareCode("12-345"), "12345");
 });
 

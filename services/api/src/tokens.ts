@@ -34,16 +34,14 @@ export function normalizeConnectCode(input: string): string {
   return input.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
 }
 
-/** Five-digit room share code (100k space). Display adds a hyphen: 12-345. */
+/** Five-digit room share code (100k space), shown as digits only: 12345. */
 export function createShareCode(): string {
   const value = randomBytes(3).readUIntBE(0, 3) % 100_000;
   return String(value).padStart(5, "0");
 }
 
 export function formatShareCode(code: string): string {
-  const normalized = normalizeShareCode(code);
-  if (normalized.length !== 5) return normalized;
-  return `${normalized.slice(0, 2)}-${normalized.slice(2)}`;
+  return normalizeShareCode(code);
 }
 
 export function normalizeShareCode(input: string): string {

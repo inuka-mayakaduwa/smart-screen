@@ -51,6 +51,9 @@ export type RoomDetail = {
   name: string;
   timezone: string;
   meta: Record<string, string>;
+  brandName: string | null;
+  logoImageId: string | null;
+  logoUrl: string | null;
   status: "active" | "retired";
   share: RoomShare;
   display: import("./display").PanelDisplaySettings;

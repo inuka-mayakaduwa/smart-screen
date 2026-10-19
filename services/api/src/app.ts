@@ -231,6 +231,8 @@ export function createApp(store: Store, config: Config): AppContext {
         name,
         timezone,
         meta,
+        brandName: null,
+        logoImageId: null,
         backgroundImageId: null,
         backgroundKind: "gradient",
         backgroundSolid: "#14221c",
@@ -265,11 +267,24 @@ export function createApp(store: Store, config: Config): AppContext {
         if (req.body?.name !== undefined) room.name = stringField(req.body.name, "Room name");
         if (req.body?.timezone !== undefined) room.timezone = requireTimezone(req.body.timezone);
         if (req.body?.meta !== undefined) room.meta = optionalMeta(req.body.meta) ?? {};
+        if (req.body?.brandName !== undefined) {
+          if (req.body.brandName === null || req.body.brandName === "") room.brandName = null;
+          else room.brandName = stringField(req.body.brandName, "Brand name").slice(0, 80);
+        }
         if (req.body?.status !== undefined) {
           if (req.body.status !== "active" && req.body.status !== "retired") {
             throw new HttpError(400, "Status must be active or retired");
           }
           room.status = req.body.status;
+        }
+        if (req.body?.logoImageId !== undefined) {
+          const imageId = req.body.logoImageId;
+          if (imageId === null || imageId === "") room.logoImageId = null;
+          else {
+            const image = data.images.find((item) => item.id === imageId && item.roomId === room.id);
+            if (!image) throw new HttpError(400, "That image is not on this room");
+            room.logoImageId = image.id;
+          }
         }
         if (req.body?.backgroundImageId !== undefined) {
           const imageId = req.body.backgroundImageId;
@@ -379,10 +394,16 @@ export function createApp(store: Store, config: Config): AppContext {
       if (index === -1) throw new HttpError(404, "Image not found");
       const [image] = data.images.splice(index, 1);
       for (const room of data.rooms) {
+        let touched = false;
         if (room.backgroundImageId === image!.id) {
           room.backgroundImageId = data.images.find((item) => item.roomId === room.id)?.id ?? null;
-          room.updatedAt = new Date().toISOString();
+          touched = true;
         }
+        if (room.logoImageId === image!.id) {
+          room.logoImageId = null;
+          touched = true;
+        }
+        if (touched) room.updatedAt = new Date().toISOString();
       }
       return image!;
     });
@@ -553,11 +574,12 @@ export function createApp(store: Store, config: Config): AppContext {
       if (!share.roomCode) throw new HttpError(403, "Room code sharing is turned off for this room");
       const ttlMs = share.codeRotateMinutes * 60 * 1000;
       const created = mintShareAlias({ roomId: room.id, deviceId: device.id, ttlMs });
-      const shareUrl = joinCodeUrl(config.shareWebOrigin, created.code);
+      const code = formatShareCode(created.code);
+      const shareUrl = joinCodeUrl(config.shareWebOrigin, code);
       const qrDataUrl = await QRCode.toDataURL(shareUrl, { margin: 1, width: 480, errorCorrectionLevel: "M" });
       res.status(201).json({
         sessionId: created.sessionId,
-        code: created.code,
+        code,
         shareUrl,
         qrDataUrl,
         expiresAt: new Date(created.expiresAt).toISOString(),
@@ -907,11 +929,15 @@ function summarizeRoom(data: ReturnType<Store["read"]>, room: Room, base: string
 }
 
 function presentAdminRoom(data: ReturnType<Store["read"]>, room: Room, base: string) {
+  const logoOk = Boolean(room.logoImageId && data.images.some((image) => image.id === room.logoImageId));
   return {
     id: room.id,
     name: room.name,
     timezone: room.timezone,
     meta: room.meta,
+    brandName: room.brandName,
+    logoImageId: logoOk ? room.logoImageId : null,
+    logoUrl: logoOk ? mediaUrl(base, room.logoImageId!) : null,
     status: room.status,
     share: normalizeShare(room.share),
     display: resolveDisplaySettings(data.displayDefaults, room.displayOverrides),
@@ -970,11 +996,14 @@ function presentSession(session: RoomSession, config: Config) {
 
 function presentDisplayRoom(data: ReturnType<Store["read"]>, room: Room, base: string) {
   const normalized = normalizeRoomBackground(room);
+  const logoOk = Boolean(room.logoImageId && data.images.some((image) => image.id === room.logoImageId));
   return {
     id: room.id,
     name: room.name,
     timezone: room.timezone,
     meta: room.meta,
+    brandName: room.brandName,
+    logoUrl: logoOk ? mediaUrl(base, room.logoImageId!) : null,
     backgroundUrl: normalized.backgroundImageId ? mediaUrl(base, normalized.backgroundImageId) : null,
     backgroundKind: normalized.backgroundKind,
     backgroundSolid: normalized.backgroundSolid,

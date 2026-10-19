@@ -1,7 +1,12 @@
 import { CaptureUpdateAction, Excalidraw, MainMenu, reconcileElements } from "@excalidraw/excalidraw";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { RemoteExcalidrawElement } from "@excalidraw/excalidraw/data/reconcile";
-import type { BinaryFileData, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+import type {
+  BinaryFileData,
+  BinaryFiles,
+  ExcalidrawImperativeAPI,
+  NormalizedZoomValue,
+} from "@excalidraw/excalidraw/types";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "@excalidraw/excalidraw/index.css";
@@ -162,7 +167,7 @@ function Board({ initial }: { initial: Scene }) {
   }
 
   return (
-    <div className="board">
+    <div className={embed ? "board board-panel" : "board"}>
       <Excalidraw
         name="whiteboard"
         aiEnabled={false}
@@ -170,7 +175,7 @@ function Board({ initial }: { initial: Scene }) {
         initialData={{
           elements: initial.elements,
           files: initial.files,
-          appState: { exportEmbedScene: false, viewBackgroundColor: "#ffffff" },
+          appState: panelAppState(),
         }}
         UIOptions={{
           canvasActions: {
@@ -186,6 +191,8 @@ function Board({ initial }: { initial: Scene }) {
         excalidrawAPI={(api) => {
           boardApi.current = api;
           readyAt.current = Date.now() + 500;
+          // Keep panel-friendly stroke/font defaults even after scene restore.
+          api.updateScene({ appState: panelAppState(), captureUpdate: CaptureUpdateAction.NEVER });
           if (boardQueue.current) {
             applyRemote(boardQueue.current);
             boardQueue.current = null;
@@ -203,6 +210,22 @@ function Board({ initial }: { initial: Scene }) {
       </Excalidraw>
     </div>
   );
+}
+
+/** Thinner strokes and smaller type for room panels / digital screens. */
+function panelAppState() {
+  return {
+    exportEmbedScene: false,
+    viewBackgroundColor: "#ffffff",
+    // Excalidraw widths: 0.5 (thin), 1, 2, 4
+    currentItemStrokeWidth: 0.5,
+    // Excalidraw sizes: 16, 20, 28, 36
+    currentItemFontSize: 16,
+    currentItemRoughness: 0,
+    currentItemOpacity: 100,
+    zoom: { value: 0.7 as NormalizedZoomValue },
+    gridModeEnabled: false,
+  };
 }
 
 function codeFromLocation() {
