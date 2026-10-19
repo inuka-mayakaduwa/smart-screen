@@ -158,11 +158,6 @@ function App() {
   );
 }
 
-type ShareLookup = {
-  iceServers?: { urls: string; username?: string; credential?: string }[];
-  panelLanIp?: string | null;
-};
-
 async function publish(
   stream: MediaStream,
   socketUrl: string,
@@ -241,7 +236,6 @@ async function publish(
         // The socket is already going away.
       }
     }
-    stopNative();
     stream.getTracks().forEach((item) => item.stop());
     showFrozenPreview(false);
     preview.remove();
