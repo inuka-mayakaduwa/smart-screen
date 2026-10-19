@@ -1,7 +1,14 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api, type RoomDetail, type RoomShare } from "./api";
-import { modeLabel, refreshLabel, type PanelDisplaySettings, type PanelThemeInfo } from "./display";
+import {
+  KNOWN_PANEL_THEMES,
+  mergePanelThemes,
+  modeLabel,
+  refreshLabel,
+  type PanelDisplaySettings,
+  type PanelThemeInfo,
+} from "./display";
 import { DisplaySettingsForm } from "./DisplaySettingsForm";
 
 type PublicConfig = { googleConfigured: boolean; microsoftConfigured: boolean; turnConfigured: boolean };
@@ -167,7 +174,7 @@ function RoomDisplayPanel({
   onSaved: () => Promise<void>;
   onError: (message: string) => void;
 }) {
-  const [themes, setThemes] = useState<PanelThemeInfo[]>([]);
+  const [themes, setThemes] = useState<PanelThemeInfo[]>(KNOWN_PANEL_THEMES);
   const [defaults, setDefaults] = useState<PanelDisplaySettings | null>(null);
   const [useDefaults, setUseDefaults] = useState(room.displayOverrides === null);
   const [display, setDisplay] = useState<PanelDisplaySettings>(room.display);
@@ -182,9 +189,9 @@ function RoomDisplayPanel({
     api<{ display: PanelDisplaySettings; themes: PanelThemeInfo[] }>("/api/admin/settings/display")
       .then((body) => {
         setDefaults(body.display);
-        setThemes(body.themes);
+        setThemes(mergePanelThemes(body.themes));
       })
-      .catch(() => undefined);
+      .catch(() => setThemes(mergePanelThemes(undefined)));
   }, []);
 
   function customize() {
@@ -277,6 +284,7 @@ function RoomDisplayPanel({
 const SOLID_PRESETS = [
   { id: "deep-green", label: "Deep green", color: "#14221c" },
   { id: "slate", label: "Slate", color: "#101820" },
+  { id: "deep-space", label: "Deep space", color: "#050816" },
   { id: "charcoal", label: "Charcoal", color: "#1a1a1a" },
   { id: "sand", label: "Sand", color: "#e8dfd0" },
   { id: "white", label: "White", color: "#ffffff" },
@@ -285,6 +293,7 @@ const SOLID_PRESETS = [
 const GRADIENT_PRESETS = [
   { id: "forest", label: "Forest", from: "#14221c", to: "#0c6b52" },
   { id: "ocean", label: "Ocean", from: "#0b1f33", to: "#2f6fb0" },
+  { id: "deep-space", label: "Deep space", from: "#050816", to: "#163a8a" },
   { id: "dusk", label: "Dusk", from: "#1b1430", to: "#5a3d8a" },
   { id: "ember", label: "Ember", from: "#2a1208", to: "#c45c26" },
 ] as const;
@@ -319,47 +328,58 @@ function BackgroundPanel({
       <p className="muted">Presets apply when no uploaded image is selected. Overlay opacity tints the idle room screen.</p>
       <div className="stack">
         <strong>Solid colors</strong>
-        <div className="share-grid">
-          {SOLID_PRESETS.map((preset) => (
-            <button
-              key={preset.id}
-              type="button"
-              className={room.backgroundKind === "solid" && room.backgroundSolid === preset.color ? "choice on" : "choice"}
-              onClick={() => void patch({ backgroundKind: "solid", backgroundSolid: preset.color })}
-            >
-              {preset.label}
-            </button>
-          ))}
+        <div className="bg-presets" role="group" aria-label="Solid background presets">
+          {SOLID_PRESETS.map((preset) => {
+            const on = room.backgroundKind === "solid" && room.backgroundSolid === preset.color;
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                className={`bg-choice${on ? " is-on" : ""}`}
+                aria-pressed={on}
+                onClick={() => void patch({ backgroundKind: "solid", backgroundSolid: preset.color })}
+              >
+                <span className="bg-swatch" style={{ background: preset.color }} aria-hidden="true" />
+                <span className="bg-choice-label">{preset.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
       <div className="stack">
         <strong>Gradients</strong>
-        <div className="share-grid">
-          {GRADIENT_PRESETS.map((preset) => (
-            <button
-              key={preset.id}
-              type="button"
-              className={
-                room.backgroundKind === "gradient" &&
-                room.backgroundGradientFrom === preset.from &&
-                room.backgroundGradientTo === preset.to
-                  ? "choice on"
-                  : "choice"
-              }
-              onClick={() =>
-                void patch({
-                  backgroundKind: "gradient",
-                  backgroundGradientFrom: preset.from,
-                  backgroundGradientTo: preset.to,
-                })
-              }
-            >
-              {preset.label}
-            </button>
-          ))}
+        <div className="bg-presets" role="group" aria-label="Gradient background presets">
+          {GRADIENT_PRESETS.map((preset) => {
+            const on =
+              room.backgroundKind === "gradient" &&
+              room.backgroundGradientFrom === preset.from &&
+              room.backgroundGradientTo === preset.to;
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                className={`bg-choice${on ? " is-on" : ""}`}
+                aria-pressed={on}
+                onClick={() =>
+                  void patch({
+                    backgroundKind: "gradient",
+                    backgroundGradientFrom: preset.from,
+                    backgroundGradientTo: preset.to,
+                  })
+                }
+              >
+                <span
+                  className="bg-swatch"
+                  style={{ background: `linear-gradient(160deg, ${preset.from}, ${preset.to})` }}
+                  aria-hidden="true"
+                />
+                <span className="bg-choice-label">{preset.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
-      <label>
+      <label className="bg-opacity">
         Overlay opacity ({scrimOpacity}%)
         <input
           type="range"

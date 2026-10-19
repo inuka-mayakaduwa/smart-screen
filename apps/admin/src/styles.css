@@ -188,6 +188,57 @@ a { color: inherit; }
 .ds-thumb-left i:first-child { height: 16px; width: 70%; }
 .ds-thumb-right i { display: block; flex: 1; border-radius: 5px; }
 
+.ds-thumb-space {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ds-thumb-space-top,
+.ds-thumb-space-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.ds-thumb-space-top i,
+.ds-thumb-space-foot i {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+}
+
+.ds-thumb-space-top i:first-child { width: 42%; }
+.ds-thumb-space-top i:last-child { width: 28%; }
+.ds-thumb-space-foot i { flex: 1; height: 14px; border-radius: 5px; }
+
+.ds-thumb-space-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.ds-thumb-space-hero i {
+  display: block;
+  border-radius: 4px;
+}
+
+.ds-thumb-space-hero i:first-child {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.ds-thumb-space-hero i:nth-child(2) {
+  width: 54%;
+  height: 10px;
+}
+
+.ds-thumb-space-hero i:last-child { height: 6px; }
+
 .ds-segmented {
   display: inline-flex;
   flex-wrap: wrap;
@@ -418,6 +469,47 @@ input, select {
 .images figure { margin: 0; width: 160px; }
 .images img { width: 160px; height: 100px; object-fit: cover; border-radius: 12px; background: #ddd4c8; }
 .images figcaption { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+
+.bg-presets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 10px;
+}
+
+.bg-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  text-align: left;
+  background: #fff;
+  border: 1px solid #e3dbd0;
+  border-radius: 14px;
+  transition: border-color 120ms, box-shadow 120ms;
+}
+
+.bg-choice:hover { border-color: #c9bdae; }
+.bg-choice.is-on { border-color: #0c6b52; box-shadow: 0 0 0 2px rgba(12, 107, 82, 0.18); }
+
+.bg-swatch {
+  display: block;
+  height: 52px;
+  border-radius: 10px;
+  border: 1px solid rgba(28, 25, 21, 0.08);
+}
+
+.bg-choice-label {
+  padding: 0 2px 2px;
+  font-size: 13px;
+  font-weight: 550;
+  color: #1c1915;
+}
+
+.bg-opacity input[type="range"] {
+  width: 100%;
+  padding: 0;
+  accent-color: #0c6b52;
+}
 
 .banner {
   background: #f4e4d4;

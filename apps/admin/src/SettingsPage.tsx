@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { api } from "./api";
-import type { PanelDisplaySettings, PanelThemeInfo } from "./display";
+import { KNOWN_PANEL_THEMES, mergePanelThemes, type PanelDisplaySettings, type PanelThemeInfo } from "./display";
 import { DisplaySettingsForm } from "./DisplaySettingsForm";
 
 type AppRelease = {
@@ -13,7 +13,7 @@ type AppRelease = {
 
 export function SettingsPage() {
   const [display, setDisplay] = useState<PanelDisplaySettings | null>(null);
-  const [themes, setThemes] = useState<PanelThemeInfo[]>([]);
+  const [themes, setThemes] = useState<PanelThemeInfo[]>(KNOWN_PANEL_THEMES);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
 
@@ -21,7 +21,7 @@ export function SettingsPage() {
     api<{ display: PanelDisplaySettings; themes: PanelThemeInfo[] }>("/api/admin/settings/display")
       .then((body) => {
         setDisplay(body.display);
-        setThemes(body.themes);
+        setThemes(mergePanelThemes(body.themes));
       })
       .catch((err: Error) => setError(err.message));
   }, []);

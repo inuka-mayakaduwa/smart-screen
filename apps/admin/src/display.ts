@@ -41,6 +41,62 @@ export const FALLBACK_SWATCH: ThemeSwatch = {
   joinText: "#1f2421",
 };
 
+/** Kept in sync with services/api PANEL_THEMES so the picker stays complete if the API is stale. */
+export const KNOWN_PANEL_THEMES: PanelThemeInfo[] = [
+  {
+    id: "classic",
+    label: "Classic",
+    description: "Deep green board, large clock, two columns.",
+    swatch: {
+      screen: "#14221c",
+      card: "rgba(255,255,255,0.1)",
+      featured: "rgba(12,107,82,0.85)",
+      text: "#ffffff",
+      muted: "#d7e0da",
+      accent: "#8dceba",
+      joinBackground: "#ffffff",
+      joinText: "#0c6b52",
+    },
+  },
+  {
+    id: "slate",
+    label: "Slate",
+    description: "Cool blue tones with tighter type.",
+    swatch: {
+      screen: "#101820",
+      card: "rgba(148,176,210,0.12)",
+      featured: "rgba(47,111,176,0.88)",
+      text: "#f4f7fb",
+      muted: "#9db0c7",
+      accent: "#7eb6ff",
+      joinBackground: "#e7eef7",
+      joinText: "#1f4f82",
+    },
+  },
+  {
+    id: "deep-space",
+    label: "Deep Space",
+    description: "Centered share hero, brand header, next booking + whiteboard card.",
+    swatch: {
+      screen: "#050816",
+      card: "rgba(18,36,78,0.55)",
+      featured: "rgba(28,58,120,0.85)",
+      text: "#ffffff",
+      muted: "rgba(255,255,255,0.78)",
+      accent: "#5ee0a0",
+      joinBackground: "#ffffff",
+      joinText: "#0b1c4a",
+    },
+  },
+];
+
+export function mergePanelThemes(fromApi: PanelThemeInfo[] | undefined): PanelThemeInfo[] {
+  const byId = new Map<string, PanelThemeInfo>();
+  for (const theme of KNOWN_PANEL_THEMES) byId.set(theme.id, theme);
+  for (const theme of fromApi ?? []) byId.set(theme.id, theme);
+  return [...byId.values()];
+}
+
 export const SAMPLE_MEETING = {
   title: "Quarterly planning",
   organizer: "Priya Fernando",

@@ -63,6 +63,21 @@ export const PANEL_THEMES: PanelThemeInfo[] = [
       joinText: "#1f4f82",
     },
   },
+  {
+    id: "deep-space",
+    label: "Deep Space",
+    description: "Centered share hero, brand header, next booking + whiteboard card.",
+    swatch: {
+      screen: "#050816",
+      card: "rgba(18,36,78,0.55)",
+      featured: "rgba(28,58,120,0.85)",
+      text: "#ffffff",
+      muted: "rgba(255,255,255,0.78)",
+      accent: "#5ee0a0",
+      joinBackground: "#ffffff",
+      joinText: "#0b1c4a",
+    },
+  },
 ];
 
 const MODES = new Set<MeetingPrivacyMode>(["details", "booked-by", "busy"]);

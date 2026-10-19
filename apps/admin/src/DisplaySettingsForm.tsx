@@ -43,7 +43,10 @@ export function DisplaySettingsForm({
               aria-pressed={theme.id === value.themeId}
               onClick={() => onChange({ ...value, themeId: theme.id })}
             >
-              <ThemeThumb swatch={theme.swatch} />
+              <ThemeThumb
+                swatch={theme.swatch}
+                layout={theme.id === "deep-space" ? "deep-space" : "classic"}
+              />
               <span className="ds-theme-text">
                 <strong>{theme.label}</strong>
                 <small>{theme.description}</small>
@@ -116,7 +119,26 @@ function SectionHead({ title, detail }: { title: string; detail: string }) {
   );
 }
 
-function ThemeThumb({ swatch }: { swatch: ThemeSwatch }) {
+function ThemeThumb({ swatch, layout = "classic" }: { swatch: ThemeSwatch; layout?: "classic" | "deep-space" }) {
+  if (layout === "deep-space") {
+    return (
+      <span className="ds-thumb ds-thumb-space" style={{ background: `linear-gradient(180deg, ${swatch.screen}, #163a8a)` }} aria-hidden="true">
+        <span className="ds-thumb-space-top">
+          <i style={{ background: swatch.text }} />
+          <i style={{ background: swatch.muted }} />
+        </span>
+        <span className="ds-thumb-space-hero">
+          <i style={{ background: swatch.accent }} />
+          <i style={{ background: swatch.text }} />
+          <i style={{ background: swatch.muted, width: "70%" }} />
+        </span>
+        <span className="ds-thumb-space-foot">
+          <i style={{ background: swatch.card }} />
+          <i style={{ background: swatch.joinBackground }} />
+        </span>
+      </span>
+    );
+  }
   return (
     <span className="ds-thumb" style={{ background: swatch.screen }} aria-hidden="true">
       <span className="ds-thumb-left">
