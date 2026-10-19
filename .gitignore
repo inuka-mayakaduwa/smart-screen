@@ -9,6 +9,7 @@ node_modules/
 .env.*
 !.env.example
 !.env.*.example
+apps/share-web/certs/
 
 # Compiled output and test reports
 dist/

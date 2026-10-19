@@ -4,9 +4,10 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dev:docker": "nodemon --watch src --ext ts --legacy-watch --delay 0.3 --exec tsx src/index.ts",
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/meetings.test.ts src/tokens.test.ts src/release.test.ts src/sessions.test.ts src/smoke.test.ts src/debugLogs.test.ts src/download.test.ts"
+    "test": "tsx --test src/meetings.test.ts src/tokens.test.ts src/release.test.ts src/sessions.test.ts src/signaling.test.ts src/smoke.test.ts src/debugLogs.test.ts src/download.test.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -22,6 +23,7 @@
     "@types/node": "^22.19.1",
     "@types/qrcode": "^1.5.6",
     "@types/ws": "^8.18.1",
+    "nodemon": "^3.1.14",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3"
   }

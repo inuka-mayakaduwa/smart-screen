@@ -5,6 +5,8 @@
     "dev:api": "npm run dev --prefix services/api",
     "dev:admin": "npm run dev --prefix apps/admin",
     "dev:share": "npm run dev --prefix apps/share-web",
+    "dev:share-desktop": "node scripts/share-desktop-dev.mjs",
+    "build:share-desktop": "node scripts/share-desktop-build.mjs",
     "dev:whiteboard": "npm run dev --prefix apps/whiteboard-web",
     "typecheck:api": "npm run typecheck --prefix services/api"
   }

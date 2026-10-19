@@ -1,0 +1,204 @@
+:root {
+  color: #1c1915;
+  background:
+    radial-gradient(circle at top left, rgba(12, 107, 82, 0.16), transparent 32%),
+    #efeae2;
+  font-family: Outfit, sans-serif;
+}
+
+body { margin: 0; }
+
+main {
+  min-height: 100vh;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  padding: 48px;
+  max-width: 720px;
+}
+
+.eyebrow {
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 12px;
+  color: #0c6b52;
+}
+
+h1 {
+  font-family: Fraunces, serif;
+  font-size: 64px;
+  line-height: 0.95;
+  letter-spacing: -0.045em;
+  margin: 0 0 24px;
+}
+
+form { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; width: min(560px, 100%); }
+
+label { display: flex; flex-direction: column; gap: 8px; flex: 1; color: #5e574e; }
+
+label.server { flex-basis: 100%; }
+
+input, button { font: inherit; }
+
+input {
+  border: 1px solid #d9d0c4;
+  background: white;
+  border-radius: 14px;
+  padding: 14px 16px;
+  font-size: 28px;
+  letter-spacing: 0.12em;
+}
+
+label.server input {
+  font-size: 18px;
+  letter-spacing: 0;
+}
+
+button {
+  background: #0c6b52;
+  color: white;
+  border: 0;
+  border-radius: 999px;
+  padding: 14px 18px;
+  cursor: pointer;
+}
+
+button.pause, button.freeze { background: #1c1915; }
+
+button.pause.on, button.freeze.on { background: #8a5a12; }
+
+button.stop, button.cancel {
+  background: transparent;
+  color: #8a3b32;
+  border: 1px solid #e4cfc8;
+}
+
+button:disabled { opacity: 0.7; cursor: default; }
+
+.prelive {
+  position: fixed;
+  width: 320px;
+  height: 180px;
+  left: -400px;
+  top: 0;
+  overflow: hidden;
+}
+
+.live { order: 3; width: min(640px, 100%); margin: 4px 0 18px; }
+
+.preview-wrap { position: relative; }
+
+.stage {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: #101410;
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.stage img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #101410;
+  display: block;
+}
+
+.pause-cover {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  color: white;
+  background:
+    radial-gradient(circle at 18% 16%, rgba(141, 206, 186, 0.15), transparent 35%),
+    linear-gradient(135deg, #173a31, #0d1713);
+  border-radius: 18px;
+}
+
+.pause-cover .rest-icon { color: #8dceba; font: 500 48px serif; line-height: 1; }
+.pause-cover strong { font-size: 20px; }
+.pause-cover span:last-child { color: #b9c9c2; font-size: 13px; }
+
+.freeze-badge {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  color: white;
+  background: rgba(16, 20, 16, 0.72);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  font-size: 17px;
+}
+
+.live-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px;
+  font-size: 18px;
+}
+
+.live-label.held { color: #8a5a12; }
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #0c6b52;
+  box-shadow: 0 0 0 0 rgba(12, 107, 82, 0.55);
+  animation: pulse 1.6s ease-out infinite;
+}
+
+.live-label.held .dot {
+  background: #8a5a12;
+  animation: none;
+}
+
+@keyframes pulse {
+  70% { box-shadow: 0 0 0 8px rgba(12, 107, 82, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(12, 107, 82, 0); }
+}
+
+.actions { order: 4; display: flex; flex-wrap: wrap; gap: 10px; }
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(560px, 100%);
+  margin-bottom: 16px;
+}
+
+.picker h2 {
+  margin: 12px 0 0;
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #0c6b52;
+  font-weight: 560;
+}
+
+.picker button.choice {
+  border-radius: 14px;
+  text-align: left;
+  background: white;
+  color: #1c1915;
+  border: 1px solid #d9d0c4;
+}
+
+.status { order: 5; color: #5e574e; min-height: 1.4em; }
+
+@media (max-width: 700px) {
+  main { padding: 24px; }
+  h1 { font-size: 44px; }
+  form { flex-direction: column; align-items: stretch; }
+}
