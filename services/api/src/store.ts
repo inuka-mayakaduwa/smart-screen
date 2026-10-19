@@ -103,8 +103,20 @@ function emptyBoard(updatedAt: string): WhiteboardScene {
 
 function normalizeRoomRecord(room: Room): Room {
   const record = room as Room & { displayOverrides?: Partial<Room["displayOverrides"]> | null };
+  const kind = record.backgroundKind === "solid" || record.backgroundKind === "gradient" ? record.backgroundKind : "image";
   return {
     ...record,
+    backgroundKind: record.backgroundImageId ? "image" : kind,
+    backgroundSolid: typeof record.backgroundSolid === "string" ? record.backgroundSolid : "#14221c",
+    backgroundGradientFrom: typeof record.backgroundGradientFrom === "string" ? record.backgroundGradientFrom : "#14221c",
+    backgroundGradientTo: typeof record.backgroundGradientTo === "string" ? record.backgroundGradientTo : "#0c6b52",
+    scrimOpacity: clampOpacity(record.scrimOpacity, 0.62),
     displayOverrides: record.displayOverrides ?? null,
   };
+}
+
+function clampOpacity(value: unknown, fallback: number) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(0.8, Math.max(0, parsed));
 }

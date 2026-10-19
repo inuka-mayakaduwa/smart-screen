@@ -18,9 +18,9 @@ import {
 } from "./microsoft.js";
 import { createDebugLogs, formatDebugReport, normalizeDebugLines } from "./debugLogs.js";
 import { allowDownloadAttempt, downloadPage } from "./download.js";
-import { createShareSession, getShareSession } from "./signaling.js";
+import { getShareSession, mintShareAlias, parseLanIp, setPanelLanIp } from "./signaling.js";
 import { APK_FILENAME, APK_LIMIT_BYTES, assertApkFile, presentRelease, readReleaseFields } from "./release.js";
-import { endOpenSession, ensureSession, parseOpenedBy, sessionByCode } from "./sessions.js";
+import { endOpenSession, ensureSession, parseOpenedBy, resolveWhiteboardSession } from "./sessions.js";
 import { closeWhiteboard, liveScene } from "./whiteboard.js";
 import type { Store } from "./store.js";
 import {
@@ -29,6 +29,7 @@ import {
   createDeviceToken,
   createId,
   formatConnectCode,
+  formatShareCode,
   hashSecret,
   normalizeConnectCode,
   secretsMatch,
@@ -231,6 +232,11 @@ export function createApp(store: Store, config: Config): AppContext {
         timezone,
         meta,
         backgroundImageId: null,
+        backgroundKind: "gradient",
+        backgroundSolid: "#14221c",
+        backgroundGradientFrom: "#14221c",
+        backgroundGradientTo: "#0c6b52",
+        scrimOpacity: 0.62,
         status: "active",
         share: defaultShare(),
         displayOverrides: null,
@@ -272,7 +278,28 @@ export function createApp(store: Store, config: Config): AppContext {
             const image = data.images.find((item) => item.id === imageId && item.roomId === room.id);
             if (!image) throw new HttpError(400, "That image is not on this room");
             room.backgroundImageId = image.id;
+            room.backgroundKind = "image";
           }
+        }
+        if (req.body?.backgroundKind !== undefined) {
+          const kind = req.body.backgroundKind;
+          if (kind !== "image" && kind !== "solid" && kind !== "gradient") {
+            throw new HttpError(400, "Background kind must be image, solid, or gradient");
+          }
+          room.backgroundKind = kind;
+          if (kind !== "image") room.backgroundImageId = null;
+        }
+        if (req.body?.backgroundSolid !== undefined) {
+          room.backgroundSolid = parseColor(req.body.backgroundSolid, room.backgroundSolid ?? "#14221c");
+        }
+        if (req.body?.backgroundGradientFrom !== undefined) {
+          room.backgroundGradientFrom = parseColor(req.body.backgroundGradientFrom, room.backgroundGradientFrom ?? "#14221c");
+        }
+        if (req.body?.backgroundGradientTo !== undefined) {
+          room.backgroundGradientTo = parseColor(req.body.backgroundGradientTo, room.backgroundGradientTo ?? "#0c6b52");
+        }
+        if (req.body?.scrimOpacity !== undefined) {
+          room.scrimOpacity = clampScrim(req.body.scrimOpacity, room.scrimOpacity);
         }
         if (req.body?.share !== undefined) room.share = parseShare(req.body.share, normalizeShare(room.share));
         if (req.body?.displayOverrides !== undefined) {
@@ -524,18 +551,29 @@ export function createApp(store: Store, config: Config): AppContext {
       const { device, room } = requireDevice(req);
       const share = normalizeShare(room.share);
       if (!share.roomCode) throw new HttpError(403, "Room code sharing is turned off for this room");
-      const code = createConnectCode().slice(0, 6);
       const ttlMs = share.codeRotateMinutes * 60 * 1000;
-      createShareSession({ code, roomId: room.id, deviceId: device.id, ttlMs });
-      const shareUrl = joinCodeUrl(config.shareWebOrigin, code);
+      const created = mintShareAlias({ roomId: room.id, deviceId: device.id, ttlMs });
+      const shareUrl = joinCodeUrl(config.shareWebOrigin, created.code);
       const qrDataUrl = await QRCode.toDataURL(shareUrl, { margin: 1, width: 480, errorCorrectionLevel: "M" });
       res.status(201).json({
-        code,
+        sessionId: created.sessionId,
+        code: created.code,
         shareUrl,
         qrDataUrl,
-        expiresAt: new Date(Date.now() + ttlMs).toISOString(),
+        expiresAt: new Date(created.expiresAt).toISOString(),
+        panelLanIp: created.panelLanIp,
         iceServers: iceServers(config),
       });
+    }),
+  );
+
+  app.post(
+    "/api/display/share/lan",
+    route((req, res) => {
+      const { device } = requireDevice(req);
+      const ip = parseLanIp(req.body?.ip);
+      setPanelLanIp(device.id, ip);
+      res.json({ ok: true, ip });
     }),
   );
 
@@ -647,8 +685,7 @@ export function createApp(store: Store, config: Config): AppContext {
   });
 
   app.get("/api/whiteboard/:code", (req, res) => {
-    const code = normalizeConnectCode(req.params.code);
-    const session = sessionByCode(store.read(), code);
+    const session = resolveWhiteboardSession(store.read(), req.params.code);
     if (!session) {
       res.status(404).json({ error: "This whiteboard is not available" });
       return;
@@ -657,19 +694,22 @@ export function createApp(store: Store, config: Config): AppContext {
       res.json({ open: false });
       return;
     }
-    const scene = liveScene(code) ?? session.whiteboard;
-    res.json({ open: true, code: session.code, elements: scene.elements, files: scene.files });
+    const boardKey = session.id;
+    const scene = liveScene(boardKey) ?? session.whiteboard;
+    res.json({ open: true, code: formatShareCode(req.params.code), elements: scene.elements, files: scene.files });
   });
 
   app.get("/api/share/:code", (req, res) => {
-    const session = getShareSession(normalizeConnectCode(req.params.code));
+    const session = getShareSession(req.params.code);
     if (!session) {
       res.status(404).json({ error: "This room code is not active" });
       return;
     }
     res.json({
+      sessionId: session.sessionId,
       code: session.code,
       expiresAt: new Date(session.expiresAt).toISOString(),
+      panelLanIp: session.panelLanIp,
       iceServers: iceServers(config),
     });
   });
@@ -877,6 +917,11 @@ function presentAdminRoom(data: ReturnType<Store["read"]>, room: Room, base: str
     display: resolveDisplaySettings(data.displayDefaults, room.displayOverrides),
     displayOverrides: room.displayOverrides,
     backgroundImageId: room.backgroundImageId,
+    backgroundKind: normalizeRoomBackground(room).backgroundKind,
+    backgroundSolid: normalizeRoomBackground(room).backgroundSolid,
+    backgroundGradientFrom: normalizeRoomBackground(room).backgroundGradientFrom,
+    backgroundGradientTo: normalizeRoomBackground(room).backgroundGradientTo,
+    scrimOpacity: normalizeRoomBackground(room).scrimOpacity,
     createdAt: room.createdAt,
     updatedAt: room.updatedAt,
     images: data.images
@@ -924,16 +969,47 @@ function presentSession(session: RoomSession, config: Config) {
 }
 
 function presentDisplayRoom(data: ReturnType<Store["read"]>, room: Room, base: string) {
+  const normalized = normalizeRoomBackground(room);
   return {
     id: room.id,
     name: room.name,
     timezone: room.timezone,
     meta: room.meta,
-    backgroundUrl: room.backgroundImageId ? mediaUrl(base, room.backgroundImageId) : null,
+    backgroundUrl: normalized.backgroundImageId ? mediaUrl(base, normalized.backgroundImageId) : null,
+    backgroundKind: normalized.backgroundKind,
+    backgroundSolid: normalized.backgroundSolid,
+    backgroundGradientFrom: normalized.backgroundGradientFrom,
+    backgroundGradientTo: normalized.backgroundGradientTo,
+    scrimOpacity: normalized.scrimOpacity,
     images: data.images
       .filter((image) => image.roomId === room.id)
       .map((image) => ({ id: image.id, url: mediaUrl(base, image.id), label: image.label })),
   };
+}
+
+function normalizeRoomBackground(room: Room): Room {
+  const kind =
+    room.backgroundImageId ? "image" : room.backgroundKind === "solid" || room.backgroundKind === "gradient" ? room.backgroundKind : "gradient";
+  return {
+    ...room,
+    backgroundKind: kind,
+    backgroundSolid: room.backgroundSolid ?? "#14221c",
+    backgroundGradientFrom: room.backgroundGradientFrom ?? "#14221c",
+    backgroundGradientTo: room.backgroundGradientTo ?? "#0c6b52",
+    scrimOpacity: clampScrim(room.scrimOpacity, 0.62),
+  };
+}
+
+function clampScrim(value: unknown, fallback: number) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(0.8, Math.max(0, parsed));
+}
+
+function parseColor(value: unknown, fallback: string) {
+  if (typeof value !== "string") return fallback;
+  const color = value.trim();
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color : fallback;
 }
 
 function consumeState(store: Store, id: string) {
@@ -943,7 +1019,8 @@ function consumeState(store: Store, id: string) {
 }
 
 function joinCodeUrl(origin: string, code: string) {
-  return `${origin.replace(/\/$/, "")}/${code}`;
+  const segment = encodeURIComponent(code);
+  return `${origin.replace(/\/$/, "")}/${segment}`;
 }
 
 function browserOrigin(value: string) {

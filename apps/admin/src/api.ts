@@ -56,6 +56,11 @@ export type RoomDetail = {
   display: import("./display").PanelDisplaySettings;
   displayOverrides: import("./display").PanelDisplaySettings | null;
   backgroundImageId: string | null;
+  backgroundKind: "image" | "solid" | "gradient";
+  backgroundSolid: string;
+  backgroundGradientFrom: string;
+  backgroundGradientTo: string;
+  scrimOpacity: number;
   images: RoomImage[];
   connections: RoomConnection[];
   devices: RoomDevice[];

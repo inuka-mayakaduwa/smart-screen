@@ -33,8 +33,8 @@ function App() {
   async function share(event: FormEvent) {
     event.preventDefault();
     const roomCode = normalize(code);
-    if (roomCode.length < 4) {
-      setStatus("Enter the room code shown on the panel.");
+    if (roomCode.length < 5) {
+      setStatus("Enter the 5-digit code on the panel.");
       return;
     }
     const url = new URL(window.location.href);
@@ -45,14 +45,14 @@ function App() {
     setDisplayMode("live");
     setStatus("Asking the browser for the screen…");
     try {
-      const session = await fetch(`${apiBase}/api/share/${roomCode}`);
+      const session = await fetch(`${apiBase}/api/share/${encodeURIComponent(formatShareCode(roomCode))}`);
       if (!session.ok) {
         const body = (await session.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error || "This room code is not active");
       }
-      await session.json();
+      const lookup = (await session.json()) as ShareLookup;
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-      await publish(stream, socketUrl, {
+      await publish(stream, socketUrl, lookup, {
         onStatus: setStatus,
         onReady: (next) => {
           controls.current = next;
@@ -125,7 +125,13 @@ function App() {
           <form onSubmit={share}>
             <label>
               Room code
-              <input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} autoCapitalize="characters" disabled={starting} />
+              <input
+                value={code}
+                onChange={(event) => setCode(normalize(event.target.value))}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                disabled={starting}
+              />
             </label>
             <button type="submit" disabled={starting}>
               {starting ? "Starting…" : "Share screen"}
@@ -138,9 +144,15 @@ function App() {
   );
 }
 
+type ShareLookup = {
+  iceServers?: { urls: string; username?: string; credential?: string }[];
+  panelLanIp?: string | null;
+};
+
 async function publish(
   stream: MediaStream,
   socketUrl: string,
+  lookup: ShareLookup,
   hooks: {
     onStatus: (value: string) => void;
     onReady: (controls: ShareControls) => void;
@@ -187,6 +199,37 @@ async function publish(
   const outbound: ArrayBuffer[] = [];
   const track = stream.getVideoTracks()[0];
   const capturer = openGrabber(track);
+  let nativeLive = false;
+  let pc: RTCPeerConnection | null = null;
+
+  function iceServers() {
+    return (lookup.iceServers ?? []).map((server) => ({
+      urls: server.urls,
+      username: server.username,
+      credential: server.credential,
+    }));
+  }
+
+  async function startNative() {
+    if (pc || finished) return;
+    pc = new RTCPeerConnection({ iceServers: iceServers() });
+    for (const mediaTrack of stream.getTracks()) pc.addTrack(mediaTrack, stream);
+    pc.onicecandidate = (event) => {
+      if (!event.candidate || ws.readyState !== WebSocket.OPEN) return;
+      ws.send(JSON.stringify({ type: "ice", candidate: event.candidate.toJSON() }));
+    };
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "offer", sdp: pc.localDescription }));
+  }
+
+  function stopNative() {
+    nativeLive = false;
+    if (!pc) return;
+    pc.onicecandidate = null;
+    pc.close();
+    pc = null;
+  }
 
   function stop(status: string, notify: boolean) {
     if (finished) return;
@@ -200,6 +243,7 @@ async function publish(
         // The socket is already going away.
       }
     }
+    stopNative();
     stream.getTracks().forEach((item) => item.stop());
     showFrozenPreview(false);
     preview.remove();
@@ -374,6 +418,10 @@ async function publish(
   }
 
   async function tick() {
+    if (nativeLive) {
+      schedule();
+      return;
+    }
     if (finished || sending || displayMode !== "live") return;
     if (!context || ws.readyState !== WebSocket.OPEN) {
       schedule();
@@ -452,10 +500,26 @@ async function publish(
 
   ws.onmessage = (event) => {
     if (typeof event.data !== "string") return;
-    const message = JSON.parse(event.data) as { type?: string; width?: number; fps?: number; quality?: number };
+    const message = JSON.parse(event.data) as {
+      type?: string;
+      width?: number;
+      fps?: number;
+      quality?: number;
+      sdp?: RTCSessionDescriptionInit;
+      candidate?: RTCIceCandidateInit;
+    };
     if (message.type === "config") applyConfig(message);
+    if (message.type === "answer" && message.sdp && pc) {
+      void pc.setRemoteDescription(message.sdp).catch(() => undefined);
+    }
+    if (message.type === "ice" && message.candidate && pc) {
+      void pc.addIceCandidate(message.candidate).catch(() => undefined);
+    }
+    if (message.type === "video-ready") nativeLive = true;
+    if (message.type === "video-stopped") stopNative();
     if (message.type === "ready" && !timer) {
       debug("panel receiver is connected");
+      void startNative().catch(() => undefined);
       if (displayMode === "live") {
         hooks.onStatus("You are sharing your screen.");
         void tick();
@@ -589,7 +653,12 @@ function reservedPath(segment: string) {
 }
 
 function normalize(value: string) {
-  return value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  return value.replace(/\D/g, "").slice(0, 5);
+}
+
+function formatShareCode(code: string) {
+  if (code.length !== 5) return code;
+  return `${code.slice(0, 2)}-${code.slice(2)}`;
 }
 
 function signalingUrl(api: string, code: string) {

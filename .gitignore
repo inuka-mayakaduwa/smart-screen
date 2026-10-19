@@ -28,6 +28,9 @@ ios/
 .kotlin/
 .gradle/
 
+# Rust / Tauri build output
+apps/share-desktop/src-tauri/target/
+
 # Mobile build artifacts and signing material
 *.apk
 *.aab

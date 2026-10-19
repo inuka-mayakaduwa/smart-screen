@@ -43,6 +43,7 @@ export function RoomPage() {
           <ProfileForm room={room} onSaved={reload} onError={setError} />
           <RoomDisplayPanel room={room} onSaved={reload} onError={setError} />
           <ImagePanel room={room} onChanged={reload} onError={setError} />
+          <BackgroundPanel room={room} onChanged={reload} onError={setError} />
           <CalendarPanel room={room} config={config} onChanged={reload} onError={setError} />
         </div>
         <div>
@@ -270,6 +271,107 @@ function RoomDisplayPanel({
         </button>
       </div>
     </form>
+  );
+}
+
+const SOLID_PRESETS = [
+  { id: "deep-green", label: "Deep green", color: "#14221c" },
+  { id: "slate", label: "Slate", color: "#101820" },
+  { id: "charcoal", label: "Charcoal", color: "#1a1a1a" },
+  { id: "sand", label: "Sand", color: "#e8dfd0" },
+  { id: "white", label: "White", color: "#ffffff" },
+] as const;
+
+const GRADIENT_PRESETS = [
+  { id: "forest", label: "Forest", from: "#14221c", to: "#0c6b52" },
+  { id: "ocean", label: "Ocean", from: "#0b1f33", to: "#2f6fb0" },
+  { id: "dusk", label: "Dusk", from: "#1b1430", to: "#5a3d8a" },
+  { id: "ember", label: "Ember", from: "#2a1208", to: "#c45c26" },
+] as const;
+
+function BackgroundPanel({
+  room,
+  onChanged,
+  onError,
+}: {
+  room: RoomDetail;
+  onChanged: () => Promise<void>;
+  onError: (message: string) => void;
+}) {
+  const [scrimOpacity, setScrimOpacity] = useState(Math.round((room.scrimOpacity ?? 0.62) * 100));
+
+  useEffect(() => {
+    setScrimOpacity(Math.round((room.scrimOpacity ?? 0.62) * 100));
+  }, [room.scrimOpacity]);
+
+  async function patch(body: Record<string, unknown>) {
+    try {
+      await api(`/api/admin/rooms/${room.id}`, { method: "PATCH", body });
+      await onChanged();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Could not save background");
+    }
+  }
+
+  return (
+    <section className="panel stack">
+      <h2>Room background</h2>
+      <p className="muted">Presets apply when no uploaded image is selected. Overlay opacity tints the idle room screen.</p>
+      <div className="stack">
+        <strong>Solid colors</strong>
+        <div className="share-grid">
+          {SOLID_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              className={room.backgroundKind === "solid" && room.backgroundSolid === preset.color ? "choice on" : "choice"}
+              onClick={() => void patch({ backgroundKind: "solid", backgroundSolid: preset.color })}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="stack">
+        <strong>Gradients</strong>
+        <div className="share-grid">
+          {GRADIENT_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              className={
+                room.backgroundKind === "gradient" &&
+                room.backgroundGradientFrom === preset.from &&
+                room.backgroundGradientTo === preset.to
+                  ? "choice on"
+                  : "choice"
+              }
+              onClick={() =>
+                void patch({
+                  backgroundKind: "gradient",
+                  backgroundGradientFrom: preset.from,
+                  backgroundGradientTo: preset.to,
+                })
+              }
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <label>
+        Overlay opacity ({scrimOpacity}%)
+        <input
+          type="range"
+          min={0}
+          max={80}
+          value={scrimOpacity}
+          onChange={(event) => setScrimOpacity(Number(event.target.value))}
+          onMouseUp={() => void patch({ scrimOpacity: scrimOpacity / 100 })}
+          onTouchEnd={() => void patch({ scrimOpacity: scrimOpacity / 100 })}
+        />
+      </label>
+    </section>
   );
 }
 
