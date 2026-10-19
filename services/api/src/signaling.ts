@@ -1,7 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import type { Server } from "node:http";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
-import { secretsMatch } from "./tokens.js";
+import { createShareCode, formatShareCode, normalizeShareCode, secretsMatch } from "./tokens.js";
 import type { Store } from "./store.js";
 
 type Role = "receiver" | "sender";
@@ -9,7 +9,7 @@ type Role = "receiver" | "sender";
 type Peer = {
   socket: WebSocket;
   role: Role;
-  code: string;
+  sessionId: string;
   slot: number;
 };
 
@@ -18,31 +18,124 @@ type RoomLinks = {
   senders: Map<number, Peer>;
 };
 
+type ShareAlias = {
+  sessionId: string;
+  display: string;
+  expiresAt: number;
+};
+
+type ShareLive = {
+  sessionId: string;
+  roomId: string;
+  deviceId: string;
+  panelLanIp: string | null;
+};
+
 const MAX_SENDERS = 4;
 const MAX_FRAME_BYTES = 2_000_000;
 const RECEIVER_FORWARD = new Set(["answer", "ice", "video-ready", "video-stopped"]);
 const debug = process.env.DEBUG === "1" || process.env.DEBUG === "true" || process.env.DEBUG === "share";
 
-const sessions = new Map<string, { code: string; roomId: string; deviceId: string; expiresAt: number }>();
+const aliases = new Map<string, ShareAlias>();
+const lives = new Map<string, ShareLive>();
+const deviceSession = new Map<string, string>();
 const peers = new Map<string, RoomLinks>();
 
-export function createShareSession(input: { code: string; roomId: string; deviceId: string; ttlMs: number }) {
-  sessions.set(input.code, {
-    code: input.code,
-    roomId: input.roomId,
-    deviceId: input.deviceId,
-    expiresAt: Date.now() + input.ttlMs,
-  });
+export type ResolvedShare = {
+  sessionId: string;
+  code: string;
+  roomId: string;
+  deviceId: string;
+  expiresAt: number;
+  panelLanIp: string | null;
+};
+
+export function setPanelLanIp(deviceId: string, ip: string | null) {
+  const sessionId = deviceSession.get(deviceId);
+  if (!sessionId) return;
+  const live = lives.get(sessionId);
+  if (!live) return;
+  live.panelLanIp = ip;
 }
 
-export function getShareSession(code: string) {
-  const session = sessions.get(code);
-  if (!session) return undefined;
-  if (session.expiresAt < Date.now()) {
-    sessions.delete(code);
+export function mintShareAlias(input: { roomId: string; deviceId: string; ttlMs: number }): ResolvedShare {
+  let sessionId = deviceSession.get(input.deviceId);
+  let live = sessionId ? lives.get(sessionId) : undefined;
+  if (!live) {
+    sessionId = createSessionId();
+    live = {
+      sessionId,
+      roomId: input.roomId,
+      deviceId: input.deviceId,
+      panelLanIp: null,
+    };
+    lives.set(sessionId, live);
+    deviceSession.set(input.deviceId, sessionId);
+  }
+  let display = createShareCode();
+  let key = normalizeShareCode(display);
+  for (let attempt = 0; attempt < 8 && aliases.has(key); attempt += 1) {
+    display = createShareCode();
+    key = normalizeShareCode(display);
+  }
+  const expiresAt = Date.now() + input.ttlMs;
+  aliases.set(key, { sessionId, display, expiresAt });
+  purgeExpiredAliases();
+  return {
+    sessionId,
+    code: formatShareCode(display),
+    roomId: live.roomId,
+    deviceId: live.deviceId,
+    expiresAt,
+    panelLanIp: live.panelLanIp,
+  };
+}
+
+/** @deprecated use mintShareAlias */
+export function createShareSession(input: { code: string; roomId: string; deviceId: string; ttlMs: number }) {
+  const display = input.code.length >= 4 ? input.code : createShareCode();
+  let sessionId = deviceSession.get(input.deviceId);
+  let live = sessionId ? lives.get(sessionId) : undefined;
+  if (!live) {
+    sessionId = createSessionId();
+    live = {
+      sessionId,
+      roomId: input.roomId,
+      deviceId: input.deviceId,
+      panelLanIp: null,
+    };
+    lives.set(sessionId, live);
+    deviceSession.set(input.deviceId, sessionId);
+  }
+  const key = normalizeShareCode(display);
+  aliases.set(key, { sessionId, display, expiresAt: Date.now() + input.ttlMs });
+}
+
+export function getShareSession(code: string): ResolvedShare | undefined {
+  purgeExpiredAliases();
+  const key = normalizeShareCode(code);
+  const alias = aliases.get(key);
+  if (!alias || alias.expiresAt < Date.now()) {
+    if (alias) aliases.delete(key);
     return undefined;
   }
-  return session;
+  const live = lives.get(alias.sessionId);
+  if (!live) {
+    aliases.delete(key);
+    return undefined;
+  }
+  return {
+    sessionId: alias.sessionId,
+    code: formatShareCode(alias.display),
+    roomId: live.roomId,
+    deviceId: live.deviceId,
+    expiresAt: alias.expiresAt,
+    panelLanIp: live.panelLanIp,
+  };
+}
+
+export function resolveShareRoomId(code: string): string | undefined {
+  return getShareSession(code)?.roomId;
 }
 
 export function attachSignaling(server: Server, store: Store) {
@@ -57,7 +150,7 @@ export function attachSignaling(server: Server, store: Store) {
   wss.on("connection", (socket, request) => {
     const peer = authorize(socket, request, store);
     if (!peer) return;
-    const links = linksFor(peer.code);
+    const links = linksFor(peer.sessionId);
     let frames = 0;
 
     if (peer.role === "sender") {
@@ -69,7 +162,7 @@ export function attachSignaling(server: Server, store: Store) {
       }
       peer.slot = slot;
       links.senders.set(slot, peer);
-      shareLog(`sender joined code=${peer.code} slot=${slot} receiver=${Boolean(links.receiver)}`);
+      shareLog(`sender joined session=${peer.sessionId} slot=${slot} receiver=${Boolean(links.receiver)}`);
       send(socket, { type: "joined", role: "sender", slot });
       if (links.receiver) {
         send(links.receiver.socket, { type: "sender", slot });
@@ -81,7 +174,7 @@ export function attachSignaling(server: Server, store: Store) {
         links.receiver.socket.close();
       }
       links.receiver = peer;
-      shareLog(`receiver joined code=${peer.code} senders=${links.senders.size}`);
+      shareLog(`receiver joined session=${peer.sessionId} senders=${links.senders.size}`);
       send(socket, { type: "joined", role: "receiver" });
       for (const sender of links.senders.values()) {
         send(socket, { type: "sender", slot: sender.slot });
@@ -90,7 +183,7 @@ export function attachSignaling(server: Server, store: Store) {
     }
 
     socket.on("message", (raw, isBinary) => {
-      const current = peers.get(peer.code);
+      const current = peers.get(peer.sessionId);
       if (!current) return;
       if (isBinary) {
         if (peer.role !== "sender" || !current.receiver) return;
@@ -98,7 +191,9 @@ export function attachSignaling(server: Server, store: Store) {
         const body = asBuffer(raw);
         if (body.length < 1 || body.length > MAX_FRAME_BYTES) return;
         frames += 1;
-        if (frames === 1 || frames % 90 === 0) shareLog(`frame ${frames} code=${peer.code} slot=${peer.slot} bytes=${body.length}`);
+        if (frames === 1 || frames % 90 === 0) {
+          shareLog(`frame ${frames} session=${peer.sessionId} slot=${peer.slot} bytes=${body.length}`);
+        }
         const packet = Buffer.allocUnsafe(1 + body.length);
         packet[0] = peer.slot;
         body.copy(packet, 1);
@@ -106,23 +201,34 @@ export function attachSignaling(server: Server, store: Store) {
         return;
       }
 
-      let message: { type?: string; slot?: number; width?: number; fps?: number; quality?: number; latency?: string };
+      let message: {
+        type?: string;
+        slot?: number;
+        width?: number;
+        fps?: number;
+        quality?: number;
+        latency?: string;
+        sdp?: unknown;
+        candidate?: unknown;
+      };
       try {
         message = JSON.parse(raw.toString()) as typeof message;
       } catch {
         return;
       }
       if (peer.role === "sender" && current.receiver) {
-        shareLog(`sender code=${peer.code} type=${message.type ?? "unknown"}`);
+        shareLog(`sender session=${peer.sessionId} type=${message.type ?? "unknown"}`);
         if (message.type === "hangup") current.senders.delete(peer.slot);
         send(current.receiver.socket, { ...message, slot: peer.slot });
         return;
       }
-      if (peer.role === "sender") shareLog(`dropped ${message.type ?? "message"} code=${peer.code} because the panel is not connected`);
+      if (peer.role === "sender") shareLog(`dropped ${message.type ?? "message"} session=${peer.sessionId} because the panel is not connected`);
       if (peer.role === "receiver" && message.type === "config") {
         const widthLabel = message.width === -1 ? "auto" : message.width || "source";
         const fpsLabel = message.fps ? message.fps : "auto";
-        shareLog(`config code=${peer.code} width=${widthLabel} fps=${fpsLabel} quality=${message.quality ?? "?"} latency=${message.latency ?? "skip"}`);
+        shareLog(
+          `config session=${peer.sessionId} width=${widthLabel} fps=${fpsLabel} quality=${message.quality ?? "?"} latency=${message.latency ?? "skip"}`,
+        );
         for (const sender of current.senders.values()) send(sender.socket, message);
         return;
       }
@@ -131,7 +237,7 @@ export function attachSignaling(server: Server, store: Store) {
         const sender = current.senders.get(slot);
         if (!sender) return;
         if (message.type === "hangup") {
-          shareLog(`hangup code=${peer.code} slot=${slot}`);
+          shareLog(`hangup session=${peer.sessionId} slot=${slot}`);
           current.senders.delete(slot);
           send(sender.socket, { type: "hangup", slot });
           send(socket, { type: "peer-left", slot });
@@ -145,7 +251,7 @@ export function attachSignaling(server: Server, store: Store) {
     });
 
     socket.on("close", () => {
-      const current = peers.get(peer.code);
+      const current = peers.get(peer.sessionId);
       if (!current) return;
       if (peer.role === "receiver" && current.receiver?.socket === socket) {
         current.receiver = undefined;
@@ -155,23 +261,34 @@ export function attachSignaling(server: Server, store: Store) {
         current.senders.delete(peer.slot);
         if (current.receiver) send(current.receiver.socket, { type: "peer-left", slot: peer.slot });
       }
-      shareLog(`closed ${peer.role} code=${peer.code}`);
-      if (!current.receiver && current.senders.size === 0) peers.delete(peer.code);
+      shareLog(`closed ${peer.role} session=${peer.sessionId}`);
+      if (!current.receiver && current.senders.size === 0) peers.delete(peer.sessionId);
     });
   });
 
   return wss;
 }
 
+function createSessionId(): string {
+  return `ss_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function purgeExpiredAliases() {
+  const now = Date.now();
+  for (const [key, alias] of aliases) {
+    if (alias.expiresAt < now) aliases.delete(key);
+  }
+}
+
 function requestPath(request: IncomingMessage) {
   return new URL(request.url ?? "/", "http://localhost").pathname;
 }
 
-function linksFor(code: string): RoomLinks {
-  const existing = peers.get(code);
+function linksFor(sessionId: string): RoomLinks {
+  const existing = peers.get(sessionId);
   if (existing) return existing;
   const created: RoomLinks = { senders: new Map() };
-  peers.set(code, created);
+  peers.set(sessionId, created);
   return created;
 }
 
@@ -182,10 +299,10 @@ function freeSlot(links: RoomLinks): number | undefined {
   return undefined;
 }
 
-function authorize(socket: WebSocket, request: IncomingMessage, store: Store): Peer | null {
+function authorize(socket: WebSocket, request: IncomingMessage, store: Store): (Peer & { sessionId: string }) | null {
   const url = new URL(request.url ?? "", "http://localhost");
   const role = url.searchParams.get("role");
-  const code = (url.searchParams.get("code") ?? "").toUpperCase();
+  const code = url.searchParams.get("code") ?? "";
   if ((role !== "receiver" && role !== "sender") || !code) {
     shareLog("rejected connection missing role or code");
     socket.close(1008, "Missing role or code");
@@ -193,7 +310,7 @@ function authorize(socket: WebSocket, request: IncomingMessage, store: Store): P
   }
   const session = getShareSession(code);
   if (!session) {
-    shareLog(`rejected ${role} unknown code=${code}`);
+    shareLog(`rejected ${role} unknown code=${normalizeShareCode(code)}`);
     socket.close(1008, "Unknown or expired code");
     return null;
   }
@@ -201,12 +318,12 @@ function authorize(socket: WebSocket, request: IncomingMessage, store: Store): P
     const token = url.searchParams.get("token") ?? "";
     const device = store.read().devices.find((item) => item.id === session.deviceId && !item.revokedAt);
     if (!device || !secretsMatch(token, device.tokenHash)) {
-      shareLog(`rejected receiver code=${code}`);
+      shareLog(`rejected receiver code=${session.code}`);
       socket.close(1008, "Receiver is not this room panel");
       return null;
     }
   }
-  return { socket, role, code, slot: -1 };
+  return { socket, role: role as Role, sessionId: session.sessionId, slot: -1 };
 }
 
 function shareLog(message: string) {
@@ -222,3 +339,14 @@ function asBuffer(raw: RawData): Buffer {
   if (Array.isArray(raw)) return Buffer.concat(raw);
   return Buffer.from(raw);
 }
+
+function parseLanIp(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const ip = value.trim();
+  const parts = ip.split(".");
+  if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part) || Number(part) > 255)) return null;
+  if (ip === "0.0.0.0" || ip.startsWith("127.")) return null;
+  return ip;
+}
+
+export { parseLanIp };

@@ -1,5 +1,6 @@
 import { HttpError } from "./http.js";
-import { createConnectCode, createId } from "./tokens.js";
+import { getShareSession } from "./signaling.js";
+import { createConnectCode, createId, normalizeConnectCode } from "./tokens.js";
 import type { DataFile, RoomSession, SessionOpenedBy, WhiteboardElement, WhiteboardFile, WhiteboardScene } from "./types.js";
 
 const OPENED_BY = new Set<SessionOpenedBy>(["share", "whiteboard", "meeting"]);
@@ -15,6 +16,15 @@ export function openSession(data: DataFile, roomId: string): RoomSession | undef
 
 export function sessionByCode(data: DataFile, code: string): RoomSession | undefined {
   return data.sessions.find((session) => session.code === code);
+}
+
+export function resolveWhiteboardSession(data: DataFile, rawCode: string): RoomSession | undefined {
+  const share = getShareSession(rawCode);
+  if (share) {
+    const open = openSession(data, share.roomId);
+    if (open) return open;
+  }
+  return sessionByCode(data, normalizeConnectCode(rawCode));
 }
 
 export function ensureSession(data: DataFile, roomId: string, openedBy: SessionOpenedBy): RoomSession {

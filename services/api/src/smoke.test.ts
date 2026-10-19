@@ -71,15 +71,19 @@ test("admin creates a room, a panel redeems Connect, and state comes from the AP
     assert.equal(state.display.refreshSeconds, 20);
     assert.ok(state.room.backgroundUrl?.includes("/media/"));
 
-    const session = await request<{ code: string; shareUrl: string; qrDataUrl: string; expiresAt: string; iceServers: { urls: string }[] }>(
-      base,
-      "/api/display/share/sessions",
-      { method: "POST", token: redeemed.deviceToken },
-    );
-    assert.equal(session.code.length, 6);
+    const session = await request<{
+      sessionId: string;
+      code: string;
+      shareUrl: string;
+      qrDataUrl: string;
+      expiresAt: string;
+      iceServers: { urls: string }[];
+    }>(base, "/api/display/share/sessions", { method: "POST", token: redeemed.deviceToken });
+    assert.match(session.code, /^\d{2}-\d{3}$/);
+    assert.ok(session.sessionId.length > 0);
     const expiresIn = new Date(session.expiresAt).getTime() - Date.now();
     assert.ok(expiresIn > 14 * 60 * 1000 && expiresIn <= 15 * 60 * 1000);
-    assert.equal(session.shareUrl, `http://127.0.0.1:5174/${session.code}`);
+    assert.equal(session.shareUrl, `http://127.0.0.1:5174/${encodeURIComponent(session.code)}`);
     assert.match(session.qrDataUrl, /^data:image\/png/);
     assert.ok(session.iceServers.some((server) => server.urls.startsWith("stun:")));
     const lookup = await request<{ code: string }>(base, `/api/share/${session.code}`);

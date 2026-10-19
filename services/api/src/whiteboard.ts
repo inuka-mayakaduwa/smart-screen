@@ -1,6 +1,6 @@
 import type { IncomingMessage, Server } from "node:http";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
-import { mergeWhiteboard, sessionByCode } from "./sessions.js";
+import { mergeWhiteboard, resolveWhiteboardSession, sessionByCode } from "./sessions.js";
 import type { Store } from "./store.js";
 import { normalizeConnectCode } from "./tokens.js";
 import type { WhiteboardScene } from "./types.js";
@@ -27,25 +27,26 @@ export function attachWhiteboard(server: Server, store: Store) {
   });
 
   wss.on("connection", (socket, request) => {
-    const code = codeFrom(request);
-    const open = openBoard(store, code);
-    if (!code || !open) {
+    const publicCode = codeFrom(request);
+    const open = openBoard(store, publicCode);
+    if (!publicCode || !open) {
       send(socket, { type: "closed" });
       socket.close(1008, "Session is not open");
       return;
     }
+    const boardKey = open.session.id;
 
-    let room = peers.get(code);
+    let room = peers.get(boardKey);
     if (!room) {
       room = new Set();
-      peers.set(code, room);
+      peers.set(boardKey, room);
     }
     room.add(socket);
     send(socket, { type: "scene", elements: open.scene.elements, files: open.scene.files });
 
     socket.on("message", (raw, isBinary) => {
       if (isBinary) return;
-      const current = openBoard(store, code);
+      const current = openBoard(store, publicCode);
       if (!current) {
         send(socket, { type: "closed" });
         socket.close(1008, "Session has ended");
@@ -54,64 +55,68 @@ export function attachWhiteboard(server: Server, store: Store) {
       const message = parseScene(raw);
       if (!message) return;
       const scene = mergeWhiteboard(current.scene, message);
-      remember(store, code, current.session.id, scene);
-      const group = peers.get(code);
+      remember(store, boardKey, current.session.id, scene);
+      const group = peers.get(boardKey);
       if (!group) return;
       for (const peer of group) send(peer, { type: "scene", elements: scene.elements, files: scene.files });
     });
 
     socket.on("close", () => {
-      const group = peers.get(code);
+      const group = peers.get(boardKey);
       if (!group) return;
       group.delete(socket);
-      if (group.size === 0) peers.delete(code);
+      if (group.size === 0) peers.delete(boardKey);
     });
   });
 
   return wss;
 }
 
-export function liveScene(code: string): WhiteboardScene | undefined {
-  return live.get(normalizeConnectCode(code))?.scene;
+export function liveScene(boardKey: string): WhiteboardScene | undefined {
+  return live.get(boardKey)?.scene;
 }
 
 export function closeWhiteboard(store: Store, code: string) {
-  const normalized = normalizeConnectCode(code);
-  flush(store, normalized);
-  const entry = live.get(normalized);
+  const session =
+    resolveWhiteboardSession(store.read(), code) ?? sessionByCode(store.read(), normalizeConnectCode(code));
+  if (!session) return;
+  const boardKey = session.id;
+  flush(store, boardKey);
+  const entry = live.get(boardKey);
   if (entry?.timer) clearTimeout(entry.timer);
-  live.delete(normalized);
-  const group = peers.get(normalized);
+  live.delete(boardKey);
+  const group = peers.get(boardKey);
   if (!group) return;
   for (const socket of group) {
     send(socket, { type: "closed" });
     socket.close(1008, "Session has ended");
   }
-  peers.delete(normalized);
+  peers.delete(boardKey);
 }
 
-function openBoard(store: Store, code: string): { session: { id: string }; scene: WhiteboardScene } | null {
-  if (!code) return null;
-  const session = sessionByCode(store.read(), code);
+function openBoard(store: Store, publicCode: string): { session: { id: string }; scene: WhiteboardScene } | null {
+  if (!publicCode) return null;
+  const session = resolveWhiteboardSession(store.read(), publicCode);
   if (!session || session.endedAt) return null;
-  const cached = live.get(code);
+  const boardKey = session.id;
+  const cached = live.get(boardKey);
   if (cached && cached.sessionId === session.id) return { session, scene: cached.scene };
   return { session, scene: session.whiteboard };
 }
 
-function remember(store: Store, code: string, sessionId: string, scene: WhiteboardScene) {
-  const existing = live.get(code);
+function remember(store: Store, boardKey: string, sessionId: string, scene: WhiteboardScene) {
+  const existing = live.get(boardKey);
   if (existing?.timer) clearTimeout(existing.timer);
   const entry: LiveBoard = { sessionId, scene, timer: null };
   entry.timer = setTimeout(() => {
     entry.timer = null;
-    flush(store, code);
+    flush(store, boardKey);
   }, SAVE_MS);
-  live.set(code, entry);
+  live.set(boardKey, entry);
 }
 
-function flush(store: Store, code: string) {
-  const entry = live.get(code);
+function flush(store: Store, boardKey: string) {
+  const entry = live.get(boardKey);
   if (!entry) return;
   store.update((data) => {
     const session = data.sessions.find((item) => item.id === entry.sessionId);
@@ -122,7 +127,7 @@ function flush(store: Store, code: string) {
 
 function codeFrom(request: IncomingMessage): string {
   const url = new URL(request.url ?? "", "http://localhost");
-  return normalizeConnectCode(url.searchParams.get("code") ?? "");
+  return (url.searchParams.get("code") ?? "").trim();
 }
 
 function parseScene(raw: RawData): { elements: unknown; files: unknown } | null {

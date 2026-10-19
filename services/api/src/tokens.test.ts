@@ -1,10 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatConnectCode, normalizeConnectCode, secretsMatch, hashSecret } from "./tokens.js";
+import {
+  createShareCode,
+  formatConnectCode,
+  formatShareCode,
+  normalizeConnectCode,
+  normalizeShareCode,
+  secretsMatch,
+  hashSecret,
+} from "./tokens.js";
 
 test("connect codes ignore spaces and dashes", () => {
   assert.equal(normalizeConnectCode(" abcd-efgh "), "ABCDEFGH");
   assert.equal(formatConnectCode("ABCDEFGH"), "ABCD-EFGH");
+});
+
+test("share codes are five digits with an optional display hyphen", () => {
+  const code = createShareCode();
+  assert.match(code, /^\d{5}$/);
+  assert.equal(formatShareCode(code), `${code.slice(0, 2)}-${code.slice(2)}`);
+  assert.equal(normalizeShareCode("12-345"), "12345");
 });
 
 test("secret comparison uses the stored hash", () => {

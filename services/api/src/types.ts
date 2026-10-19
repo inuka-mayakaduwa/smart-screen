@@ -16,12 +16,19 @@ export type RoomShare = {
   codeRotateMinutes: number;
 };
 
+export type RoomBackgroundKind = "image" | "solid" | "gradient";
+
 export type Room = {
   id: string;
   name: string;
   timezone: string;
   meta: Record<string, string>;
   backgroundImageId: string | null;
+  backgroundKind: RoomBackgroundKind;
+  backgroundSolid: string | null;
+  backgroundGradientFrom: string | null;
+  backgroundGradientTo: string | null;
+  scrimOpacity: number;
   status: RoomStatus;
   share: RoomShare;
   displayOverrides: Partial<PanelDisplaySettings> | null;

@@ -35,8 +35,8 @@ function App() {
   async function share(event: FormEvent) {
     event.preventDefault();
     const roomCode = normalize(code);
-    if (roomCode.length < 4) {
-      setStatus("Enter the room code shown on the panel.");
+    if (roomCode.length < 5) {
+      setStatus("Enter the 5-digit code on the panel.");
       return;
     }
     const url = new URL(window.location.href);
@@ -56,7 +56,7 @@ function App() {
     setDisplayMode("live");
     setStatus("Asking the browser for the screen…");
     try {
-      const session = await fetch(`${apiBase}/api/share/${roomCode}`);
+      const session = await fetch(`${apiBase}/api/share/${encodeURIComponent(formatShareCode(roomCode))}`);
       if (!session.ok) {
         const body = (await session.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error || "This room code is not active");
@@ -139,7 +139,13 @@ function App() {
           <form onSubmit={share}>
             <label>
               Room code
-              <input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} autoCapitalize="characters" disabled={starting} />
+              <input
+                value={code}
+                onChange={(event) => setCode(normalize(event.target.value))}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                disabled={starting}
+              />
             </label>
             <button type="submit" disabled={starting}>
               {starting ? "Starting…" : "Share screen"}
@@ -151,6 +157,11 @@ function App() {
     </main>
   );
 }
+
+type ShareLookup = {
+  iceServers?: { urls: string; username?: string; credential?: string }[];
+  panelLanIp?: string | null;
+};
 
 async function publish(
   stream: MediaStream,
@@ -230,6 +241,7 @@ async function publish(
         // The socket is already going away.
       }
     }
+    stopNative();
     stream.getTracks().forEach((item) => item.stop());
     showFrozenPreview(false);
     preview.remove();
@@ -858,7 +870,12 @@ function reservedPath(segment: string) {
 }
 
 function normalize(value: string) {
-  return value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  return value.replace(/\D/g, "").slice(0, 5);
+}
+
+function formatShareCode(code: string) {
+  if (code.length !== 5) return code;
+  return `${code.slice(0, 2)}-${code.slice(2)}`;
 }
 
 function signalingUrl(api: string, code: string) {
