@@ -72,6 +72,10 @@ test("share signaling forwards answers and keeps the jpeg relay", async () => {
     const videoReady = await senderMessages.next((item) => item.json?.type === "video-ready", "video ready");
     assert.equal(videoReady.json?.slot, 0);
 
+    receiver.send(JSON.stringify({ type: "renegotiate", slot: 0, reason: "connected-without-frames" }));
+    const renegotiate = await senderMessages.next((item) => item.json?.type === "renegotiate", "renegotiate");
+    assert.equal(renegotiate.json?.slot, 0);
+
     sender.send(Buffer.from([9, 9, 9]));
     const frame = await receiverMessages.next((item) => item.binary, "jpeg frame");
     assert.equal(frame.bytes?.[0], 0);

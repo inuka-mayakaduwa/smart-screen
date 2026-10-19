@@ -217,7 +217,13 @@ async function publish(
   let peerGeneration = 0;
   let retryTimer = 0;
   let disconnectTimer = 0;
+  let readyWatch = 0;
+  let connectWatch = 0;
+  let codecPref: "h264" | "vp8" = "h264";
+  let retryDelay = 3_000;
   const remoteIce: RTCIceCandidateInit[] = [];
+  const JPEG_AUTO_CAP = 1280;
+  const OUTBOUND_CAP = 6;
 
   function stop(status: string, notify: boolean) {
     if (finished) return;
@@ -226,6 +232,8 @@ async function publish(
     window.clearTimeout(timer);
     window.clearTimeout(retryTimer);
     window.clearTimeout(disconnectTimer);
+    window.clearTimeout(readyWatch);
+    window.clearTimeout(connectWatch);
     peerGeneration += 1;
     closePeer();
     direct = false;
@@ -326,7 +334,9 @@ async function publish(
 
   function fitWidth(sourceWidth: number) {
     let chosen = 0;
-    for (const step of [1280, 1920, 2560]) if (sourceWidth >= step) chosen = step;
+    const steps = direct ? [1280, 1920, 2560] : [1280];
+    for (const step of steps) if (sourceWidth >= step) chosen = step;
+    if (!direct && chosen > JPEG_AUTO_CAP) chosen = JPEG_AUTO_CAP;
     return chosen;
   }
 
@@ -350,11 +360,16 @@ async function publish(
   function syncActive() {
     const sourceWidth = availableWidth() || 1920;
     const sourceFps = availableFps();
-    activeWidth = widthSetting < 0 ? fitWidth(sourceWidth) : widthSetting;
+    let nextWidth = widthSetting < 0 ? fitWidth(sourceWidth) : widthSetting;
+    if (!direct) {
+      const jpegWidth = widthSetting < 0 || widthSetting === 0 ? fitWidth(sourceWidth) || JPEG_AUTO_CAP : widthSetting;
+      nextWidth = Math.min(Math.max(jpegWidth, 0) || JPEG_AUTO_CAP, JPEG_AUTO_CAP);
+    }
+    activeWidth = nextWidth;
     activeFps = fpsSetting <= 0 ? fitFps(activeWidth || sourceWidth, sourceFps) : fpsSetting;
     applyRate(activeFps);
     tuneSender();
-    debug(`picture width=${labelWidth(activeWidth)} fps=${activeFps} latency=${latency}`);
+    debug(`picture width=${labelWidth(activeWidth)} fps=${activeFps} latency=${latency} path=${direct ? "native" : "jpeg"}`);
   }
 
   function stepDown() {
@@ -373,10 +388,14 @@ async function publish(
         activeWidth = lower[lower.length - 1] ?? activeWidth;
         debug(`auto width ${activeWidth}`);
       }
+    } else if (!direct && widthSetting < 0 && activeWidth > JPEG_AUTO_CAP) {
+      activeWidth = JPEG_AUTO_CAP;
+      debug(`auto width ${activeWidth}`);
     }
   }
 
   function stepUp() {
+    if (!direct) return;
     const sourceWidth = availableWidth() || activeWidth || 1920;
     const ceilingWidth = widthSetting < 0 ? fitWidth(sourceWidth) : activeWidth;
     const ceilingFps = fpsSetting <= 0 ? fitFps(ceilingWidth || sourceWidth, availableFps()) : activeFps;
@@ -423,11 +442,12 @@ async function publish(
     }
     noteSource();
     flushOutbound();
-    if (latency === "skip" && ws.bufferedAmount > 800_000) {
+    if (latency === "skip" && ws.bufferedAmount > 500_000) {
+      if (widthSetting < 0 || fpsSetting <= 0) stepDown();
       schedule();
       return;
     }
-    if (latency === "queue" && outbound.length >= 24) {
+    if (latency === "queue" && outbound.length >= OUTBOUND_CAP) {
       schedule();
       return;
     }
@@ -439,9 +459,12 @@ async function publish(
       if (packet && ws.readyState === WebSocket.OPEN) {
         if (latency === "queue") {
           outbound.push(packet);
+          if (outbound.length > OUTBOUND_CAP) outbound.splice(0, outbound.length - OUTBOUND_CAP);
           flushOutbound();
-        } else if (ws.bufferedAmount <= 800_000) {
+        } else if (ws.bufferedAmount <= 500_000) {
           ws.send(packet);
+        } else if (widthSetting < 0 || fpsSetting <= 0) {
+          stepDown();
         }
         if (!sent) {
           sent = true;
@@ -455,15 +478,15 @@ async function publish(
       sending = false;
       if (!finished && displayMode === "live" && !direct) {
         const elapsed = performance.now() - started;
-        const behind = elapsed > delay * 1.2 || outbound.length > 4 || (latency === "skip" && ws.bufferedAmount > 500_000);
+        const behind = elapsed > delay * 1.2 || outbound.length > 2 || (latency === "skip" && ws.bufferedAmount > 250_000);
         if (behind && (widthSetting < 0 || fpsSetting <= 0)) {
           fast = 0;
           slow += 1;
-          if (slow >= 4) {
+          if (slow >= 2) {
             slow = 0;
             stepDown();
           }
-        } else if (elapsed < delay * 0.6 && ws.bufferedAmount < 200_000 && outbound.length === 0) {
+        } else if (direct && elapsed < delay * 0.6 && ws.bufferedAmount < 200_000 && outbound.length === 0) {
           slow = 0;
           fast += 1;
           if (fast >= 12) {
@@ -498,17 +521,26 @@ async function publish(
     debug(on ? "direct video" : "jpeg relay");
     window.clearTimeout(timer);
     timer = 0;
+    window.clearTimeout(readyWatch);
+    readyWatch = 0;
     if (on) {
       outbound.length = 0;
       window.clearTimeout(retryTimer);
       retryTimer = 0;
+      window.clearTimeout(connectWatch);
+      connectWatch = 0;
+      retryDelay = 3_000;
+      syncActive();
       return;
     }
+    syncActive();
     if (displayMode === "live") void tick();
   }
 
   function closePeer() {
     window.clearTimeout(disconnectTimer);
+    window.clearTimeout(connectWatch);
+    connectWatch = 0;
     remoteReady = false;
     remoteIce.length = 0;
     rtpSender = null;
@@ -522,10 +554,37 @@ async function publish(
 
   function scheduleRetry() {
     if (retryTimer || finished || direct) return;
+    const wait = retryDelay;
+    retryDelay = Math.min(12_000, Math.round(retryDelay * 1.5));
+    debug(`retry native in ${wait}ms codec=${codecPref}`);
     retryTimer = window.setTimeout(() => {
       retryTimer = 0;
       if (!finished && !direct) void startPeer();
-    }, 20_000);
+    }, wait);
+  }
+
+  function preferVp8Next(reason: string) {
+    if (finished || direct) return;
+    if (codecPref === "vp8") {
+      debug(`codec vp8 already tried (${reason}); staying on jpeg`);
+      return;
+    }
+    codecPref = "vp8";
+    debug(`codec fallback vp8 (${reason})`);
+    window.clearTimeout(retryTimer);
+    retryTimer = 0;
+    retryDelay = 3_000;
+    void startPeer();
+  }
+
+  function armReadyWatch(generation: number) {
+    window.clearTimeout(readyWatch);
+    readyWatch = window.setTimeout(() => {
+      readyWatch = 0;
+      if (finished || direct || generation !== peerGeneration) return;
+      if (!peer || peer.connectionState !== "connected") return;
+      preferVp8Next("no video-ready");
+    }, 5_000);
   }
 
   function tuneSender() {
@@ -586,13 +645,16 @@ async function publish(
     const generation = ++peerGeneration;
     window.clearTimeout(retryTimer);
     retryTimer = 0;
+    window.clearTimeout(readyWatch);
+    readyWatch = 0;
     closePeer();
     const connection = new RTCPeerConnection({ iceServers: normalizeIce(iceServers) });
     peer = connection;
+    debug(`start peer codec=${codecPref}`);
     try {
       const transceiver = connection.addTransceiver(track, { direction: "sendonly", streams: [stream] });
       rtpSender = transceiver.sender;
-      preferH264(transceiver);
+      preferCodec(transceiver, codecPref);
       tuneSender();
       connection.onicecandidate = (event) => {
         if (generation !== peerGeneration || !event.candidate || ws.readyState !== WebSocket.OPEN) return;
@@ -603,7 +665,10 @@ async function publish(
         debug(`peer ${connection.connectionState}`);
         if (connection.connectionState === "connected") {
           window.clearTimeout(disconnectTimer);
+          window.clearTimeout(connectWatch);
+          connectWatch = 0;
           tuneSender();
+          armReadyWatch(generation);
           void notePath(connection).then((found) => {
             if (found || generation !== peerGeneration) return;
             window.setTimeout(() => {
@@ -626,6 +691,15 @@ async function publish(
           }, 3000);
         }
       };
+      window.clearTimeout(connectWatch);
+      connectWatch = window.setTimeout(() => {
+        connectWatch = 0;
+        if (generation !== peerGeneration || finished || direct) return;
+        if (connection.connectionState === "connected" || connection.connectionState === "failed") return;
+        debug(`peer connect timeout state=${connection.connectionState}`);
+        setDirect(false);
+        scheduleRetry();
+      }, 10_000);
       const offer = await connection.createOffer();
       if (generation !== peerGeneration || finished) return;
       await connection.setLocalDescription(offer);
@@ -664,6 +738,8 @@ async function publish(
     await peer.addIceCandidate(candidate);
   }
 
+  syncActive();
+
   ws.onmessage = (event) => {
     if (typeof event.data !== "string") return;
     const message = JSON.parse(event.data) as {
@@ -679,6 +755,8 @@ async function publish(
     if (message.type === "ready") {
       debug("panel receiver is connected");
       const wasDirect = direct;
+      codecPref = "h264";
+      retryDelay = 3_000;
       setDirect(false);
       void startPeer();
       if (displayMode === "live") {
@@ -691,6 +769,7 @@ async function publish(
     if (message.type === "answer" && message.sdp) void acceptAnswer(message.sdp).catch(() => debug("answer rejected"));
     if (message.type === "ice") void acceptIce(message.candidate ?? null).catch(() => debug("ice rejected"));
     if (message.type === "video-ready") setDirect(true);
+    if (message.type === "renegotiate") preferVp8Next("panel");
     if (message.type === "video-stopped") {
       setDirect(false);
       scheduleRetry();
@@ -798,10 +877,17 @@ function paint(
   context.drawImage(source, 0, 0, width, height);
 }
 
-function preferH264(transceiver: RTCRtpTransceiver) {
+function preferCodec(transceiver: RTCRtpTransceiver, preference: "h264" | "vp8") {
   const capabilities = RTCRtpSender.getCapabilities?.("video");
   if (!capabilities || typeof transceiver.setCodecPreferences !== "function") return;
-  const rank = (mimeType: string) => (mimeType.toLowerCase() === "video/h264" ? 0 : mimeType.toLowerCase() === "video/vp8" ? 1 : 2);
+  const primary = preference === "vp8" ? "video/vp8" : "video/h264";
+  const secondary = preference === "vp8" ? "video/h264" : "video/vp8";
+  const rank = (mimeType: string) => {
+    const lower = mimeType.toLowerCase();
+    if (lower === primary) return 0;
+    if (lower === secondary) return 1;
+    return 2;
+  };
   const codecs = capabilities.codecs.slice().sort((left, right) => rank(left.mimeType) - rank(right.mimeType));
   try {
     transceiver.setCodecPreferences(codecs);

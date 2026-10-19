@@ -33,7 +33,7 @@ type ShareLive = {
 
 const MAX_SENDERS = 4;
 const MAX_FRAME_BYTES = 2_000_000;
-const RECEIVER_FORWARD = new Set(["answer", "ice", "video-ready", "video-stopped"]);
+const RECEIVER_FORWARD = new Set(["answer", "ice", "video-ready", "video-stopped", "renegotiate"]);
 const debug = process.env.DEBUG === "1" || process.env.DEBUG === "true" || process.env.DEBUG === "share";
 
 const aliases = new Map<string, ShareAlias>();
