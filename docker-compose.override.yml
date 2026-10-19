@@ -1,7 +1,87 @@
-# Loaded by local `docker compose up` only. Coolify runs docker-compose.yml
-# with an explicit -f, so these host binds never run on the server.
+# Loaded by a local `docker compose up` only. Coolify runs docker-compose.yml
+# with an explicit -f, so this file never applies on the server.
+#
+# Local mode runs the dev commands and mounts the source, so edits reload.
+# The production image still uses `npm start` and the built nginx site.
 services:
   nginx:
+    # The built site on ports 80 and 443. Leave it out of a normal local up.
+    profiles: ["bundled"]
     ports:
       - "80:80"
       - "443:443"
+
+  api:
+    build:
+      target: dev
+    env_file: !override
+      - path: ./deploy/.env.example
+        required: true
+      - path: ./deploy/localhost.env.example
+        required: true
+      - path: ./deploy/.env
+        required: false
+    ports:
+      - "0.0.0.0:4000:4000"
+    volumes:
+      - ./services/api/src:/app/src
+      - api-data:/data
+
+  admin:
+    build:
+      context: .
+      dockerfile: deploy/dev.Dockerfile
+      args:
+        APP_DIR: apps/admin
+    environment:
+      API_URL: http://api:4000
+      CHOKIDAR_USEPOLLING: "1"
+    ports:
+      - "0.0.0.0:5173:5173"
+    volumes:
+      - ./apps/admin:/src
+      - admin-modules:/src/node_modules
+    depends_on:
+      api:
+        condition: service_healthy
+
+  share:
+    build:
+      context: .
+      dockerfile: deploy/dev.Dockerfile
+      args:
+        APP_DIR: apps/share-web
+    environment:
+      API_URL: http://api:4000
+      CHOKIDAR_USEPOLLING: "1"
+    ports:
+      - "0.0.0.0:5174:5174"
+    volumes:
+      - ./apps/share-web:/src
+      - share-modules:/src/node_modules
+    depends_on:
+      api:
+        condition: service_healthy
+
+  board:
+    build:
+      context: .
+      dockerfile: deploy/dev.Dockerfile
+      args:
+        APP_DIR: apps/whiteboard-web
+    environment:
+      API_URL: http://api:4000
+      CHOKIDAR_USEPOLLING: "1"
+    ports:
+      - "0.0.0.0:5175:5175"
+    volumes:
+      - ./apps/whiteboard-web:/src
+      - board-modules:/src/node_modules
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  admin-modules:
+  share-modules:
+  board-modules:

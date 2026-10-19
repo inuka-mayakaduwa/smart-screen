@@ -159,7 +159,26 @@ The APK is a fullscreen landscape app without device-owner setup. A locked kiosk
 
 Room code sharing is received by the APK. The laptop opens the page in the QR code and shares its screen. That page is `apps/share-web`, and the link is the share origin plus the room code, such as `http://localhost:5174/ABC123`. A `?code=` link still works. Set `SHARE_WEB_ORIGIN` to an address the laptop can open. The share site reads its control API from `API_URL` in `apps/share-web/.env` and forwards `/api` and `/ws` there. Set `VITE_API_URL` only when a built share site is hosted on a different origin than the API.
 
-TURN (`TURN_URL`, `TURN_USERNAME`, `TURN_PASSWORD`) is required when the laptop is not on the same network as the panel. Without TURN, sharing works on one LAN.
+The laptop and the panel try a direct video path on their own. A connection on the same network stays between the two devices. If that check fails, TURN (`TURN_URL`, `TURN_USERNAME`, `TURN_PASSWORD`) carries the video when those values are set. JPEG frames still go through the control server until the video is actually showing, and they stay on that path when neither a direct connection nor TURN is available.
+
+The same room code works from the Windows share app in `apps/share-desktop`. The panel does not change: the QR code still opens this page, and the picture settings on the panel still apply. On the sending PC, install the desktop dependencies once, then run:
+
+```powershell
+npm install --prefix apps/share-desktop
+npm run dev:share-desktop
+```
+
+The first compile needs [Rust](https://rustup.rs/) and **Visual Studio Build Tools** with the **Desktop development with C++** workload and a **Windows 10/11 SDK**. The repo root script loads MSVC for you; if linking still fails, install that SDK in the Visual Studio Installer.
+
+`dev:share-desktop` opens a **native Windows window** (Tauri), not the browser tab on port 5176. To ship an installer:
+
+```powershell
+npm run build:share-desktop
+```
+
+The `.exe` / NSIS installer is under `apps/share-desktop/src-tauri/target/release/bundle/`.
+
+Enter the control server address, such as `http://localhost:4000`, and the code shown on the panel. The address is remembered on that PC. The app then asks which display or window to share, and the panel treats it like a browser share.
 
 Google Cast, Miracast, and AirPlay are slots in the share screen. They stay unavailable until a licensed or system receiver is linked. Miracast needs system-signed Wi-Fi Display access, which a normal APK does not have. The panel's own share app can be opened with the OEM package name configured on the room.
 
@@ -169,16 +188,33 @@ Connect to Screen on the panel stays on the room until someone shares, opens the
 
 The whiteboard icon on the room opens the board full screen. The same board opens in a browser at `WHITEBOARD_WEB_ORIGIN` with the code, for example `http://10.224.0.237:5175/ABC12345`. That origin has to be an address the panel can open. An emulator cannot use `localhost`.
 
+## Local development
+
+No domain is required. `docker compose up` on this computer reads [docker-compose.override.yml](docker-compose.override.yml), which Coolify does not use. The API runs `npm run dev:docker` and the web apps run their Vite dev servers, with the source mounted in. Saving a file reloads that service. `npm start` and the built nginx site stay the production path.
+
+```powershell
+docker compose up --build
+```
+
+| URL | Service |
+| --- | --- |
+| http://localhost:5174 | Share page |
+| http://localhost:5174/AB12CD | Screen share. The code is 6 characters |
+| http://localhost:5175/AB12CD34 | Whiteboard. The code is 8 characters |
+| http://localhost:5173 | Admin |
+| http://localhost:4000/api/... | Control API |
+
+[deploy/localhost.env.example](deploy/localhost.env.example) keeps admin, the share page, and the OAuth callbacks on `localhost`. The share page has to stay there, or on https, because a browser will not capture the screen from an address like `http://192.168.1.15`. [deploy/.env](deploy/.env.example) sets `PUBLIC_API_URL` and `WHITEBOARD_WEB_ORIGIN` to this PC's Wi-Fi address, `http://192.168.1.15:4000` and `http://192.168.1.15:5175`, so an emulator can reach those ports. `localhost` inside the emulator is the emulator itself. If that Wi-Fi address does not answer from the emulator, use `10.0.2.2` with the same ports. OAuth secrets can live in the same `deploy/.env`.
+
+Saving a file under `services/api/src` or a web app reloads that service. The containers stay up. Run `docker compose up --build` again after a dependency change, or after editing `deploy/.env`. The web apps keep their installed packages in Docker volumes; if an install looks stale, remove `admin-modules`, `share-modules`, and `board-modules`.
+
+The single-port nginx site is still available with `docker compose --profile bundled up --build`. That build does not reload on save. It listens on http://localhost and https://localhost with the image's localhost certificate.
+
 ## One domain
 
 Nginx is the only published service. The API, admin, share page, and whiteboard stay on the Docker network.
 
-```powershell
-copy deploy\.env.example deploy\.env
-docker compose up --build
-```
-
-Local Compose publishes ports 80 and 443 through `docker-compose.override.yml`. Coolify runs `docker-compose.yml` alone, and its proxy already owns those host ports, so the nginx service only exposes port 80 on the Compose network. In Coolify, assign the public domain to the **nginx** service and set the container port to **80**. Leave **api** without a domain. Coolify terminates TLS; the image's placeholder certificate is only for the local publish.
+Coolify runs `docker-compose.yml` alone, and its proxy already owns host ports 80 and 443, so the nginx service only exposes port 80 on the Compose network. In Coolify, assign the public domain to the **nginx** service and set the container port to **80**. Leave **api** without a domain. Coolify terminates TLS; the image's placeholder certificate is only for a local bundled run.
 
 | URL | Service |
 | --- | --- |
