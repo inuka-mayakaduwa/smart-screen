@@ -1,0 +1,26 @@
+{
+  "name": "@smart-screen/share-desktop",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5176 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "tauri": "tauri",
+    "dev:share-desktop": "tauri dev"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.8.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "smart-screen": "file:../.."
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.0",
+    "@types/react": "^19.1.16",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.4",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.10"
+  }
+}

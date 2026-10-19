@@ -615,7 +615,9 @@ function ShareForm({
       <p className="muted">Minutes. The panel flashes red and white for the last 10 seconds, then shows a new code.</p>
       <p className="muted">
         Cast, Miracast, and AirPlay stay unavailable in the APK until a licensed receiver is linked.{" "}
-        {turnConfigured ? "TURN is configured." : "TURN is not configured, so room-code share is reliable on the same network only."}
+        {turnConfigured
+          ? "TURN is configured. The panel uses it when a direct path is not available."
+          : "TURN is not configured. On one network the panel prefers a direct video path; otherwise frames stay on the server."}
       </p>
       <button className="primary" type="submit">
         Save sharing

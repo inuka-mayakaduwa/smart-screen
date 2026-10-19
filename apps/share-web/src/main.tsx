@@ -12,6 +12,8 @@ type ShareControls = {
 
 type DisplayMode = "live" | "paused" | "frozen";
 
+type IceServer = { urls: string | string[]; username?: string; credential?: string };
+
 function App() {
   const [code, setCode] = useState(initialCode);
   const [status, setStatus] = useState(initialCode ? "Ready to share this screen." : "Enter the code on the room panel.");
@@ -41,6 +43,15 @@ function App() {
     url.pathname = `/${roomCode}`;
     url.searchParams.delete("code");
     window.history.replaceState(null, "", url);
+    if (!window.isSecureContext) {
+      const port = window.location.port ? `:${window.location.port}` : "";
+      setStatus(`Screen capture is blocked on this address. Open https://${window.location.hostname}${port}/${roomCode}`);
+      return;
+    }
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setStatus("This browser cannot capture the screen. Use Chrome or Edge.");
+      return;
+    }
     setStarting(true);
     setDisplayMode("live");
     setStatus("Asking the browser for the screen…");
@@ -50,9 +61,12 @@ function App() {
         const body = (await session.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error || "This room code is not active");
       }
-      const lookup = (await session.json()) as ShareLookup;
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-      await publish(stream, socketUrl, lookup, {
+      const body = (await session.json()) as { iceServers?: IceServer[] };
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
+        audio: false,
+      });
+      await publish(stream, socketUrl, body.iceServers ?? [], {
         onStatus: setStatus,
         onReady: (next) => {
           controls.current = next;
@@ -152,7 +166,7 @@ type ShareLookup = {
 async function publish(
   stream: MediaStream,
   socketUrl: string,
-  lookup: ShareLookup,
+  iceServers: IceServer[],
   hooks: {
     onStatus: (value: string) => void;
     onReady: (controls: ShareControls) => void;
@@ -199,43 +213,27 @@ async function publish(
   const outbound: ArrayBuffer[] = [];
   const track = stream.getVideoTracks()[0];
   const capturer = openGrabber(track);
-  let nativeLive = false;
-  let pc: RTCPeerConnection | null = null;
-
-  function iceServers() {
-    return (lookup.iceServers ?? []).map((server) => ({
-      urls: server.urls,
-      username: server.username,
-      credential: server.credential,
-    }));
-  }
-
-  async function startNative() {
-    if (pc || finished) return;
-    pc = new RTCPeerConnection({ iceServers: iceServers() });
-    for (const mediaTrack of stream.getTracks()) pc.addTrack(mediaTrack, stream);
-    pc.onicecandidate = (event) => {
-      if (!event.candidate || ws.readyState !== WebSocket.OPEN) return;
-      ws.send(JSON.stringify({ type: "ice", candidate: event.candidate.toJSON() }));
-    };
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "offer", sdp: pc.localDescription }));
-  }
-
-  function stopNative() {
-    nativeLive = false;
-    if (!pc) return;
-    pc.onicecandidate = null;
-    pc.close();
-    pc = null;
-  }
+  if (track) track.contentHint = "text";
+  let peer: RTCPeerConnection | null = null;
+  let rtpSender: RTCRtpSender | null = null;
+  let direct = false;
+  let lan = false;
+  let remoteReady = false;
+  let peerGeneration = 0;
+  let retryTimer = 0;
+  let disconnectTimer = 0;
+  const remoteIce: RTCIceCandidateInit[] = [];
 
   function stop(status: string, notify: boolean) {
     if (finished) return;
     finished = true;
     displayMode = "live";
     window.clearTimeout(timer);
+    window.clearTimeout(retryTimer);
+    window.clearTimeout(disconnectTimer);
+    peerGeneration += 1;
+    closePeer();
+    direct = false;
     if (notify && ws.readyState === WebSocket.OPEN) {
       try {
         ws.send(JSON.stringify({ type: "hangup" }));
@@ -260,10 +258,11 @@ async function publish(
     if (displayMode === "live") {
       sendDisplayState("live");
       hooks.onStatus("You are sharing your screen.");
-      schedule();
+      if (!direct) schedule();
       return;
     }
     hooks.onStatus(displayMode === "paused" ? "The panel is showing a resting screen." : "The panel is keeping the current frame.");
+    sendDisplayState(displayMode);
     const stillMode = displayMode;
     const paintStill = () => {
       if (sending) {
@@ -347,7 +346,11 @@ async function publish(
 
   function applyRate(fps: number) {
     delay = Math.max(16, Math.round(1000 / Math.min(60, fps)));
-    track?.applyConstraints({ frameRate: { ideal: fps, max: fps } }).catch(() => undefined);
+    const source = availableWidth();
+    const video: MediaTrackConstraints = { frameRate: { ideal: fps, max: fps } };
+    if (activeWidth > 0) video.width = { ideal: activeWidth, max: activeWidth };
+    else if (source > 0) video.width = { ideal: source };
+    track?.applyConstraints(video).catch(() => undefined);
   }
 
   function syncActive() {
@@ -356,6 +359,7 @@ async function publish(
     activeWidth = widthSetting < 0 ? fitWidth(sourceWidth) : widthSetting;
     activeFps = fpsSetting <= 0 ? fitFps(activeWidth || sourceWidth, sourceFps) : fpsSetting;
     applyRate(activeFps);
+    tuneSender();
     debug(`picture width=${labelWidth(activeWidth)} fps=${activeFps} latency=${latency}`);
   }
 
@@ -418,11 +422,7 @@ async function publish(
   }
 
   async function tick() {
-    if (nativeLive) {
-      schedule();
-      return;
-    }
-    if (finished || sending || displayMode !== "live") return;
+    if (finished || sending || displayMode !== "live" || direct) return;
     if (!context || ws.readyState !== WebSocket.OPEN) {
       schedule();
       return;
@@ -459,7 +459,7 @@ async function publish(
       if (!sent) hooks.onStatus("Waiting for the first picture from this screen…");
     } finally {
       sending = false;
-      if (!finished && displayMode === "live") {
+      if (!finished && displayMode === "live" && !direct) {
         const elapsed = performance.now() - started;
         const behind = elapsed > delay * 1.2 || outbound.length > 4 || (latency === "skip" && ws.bufferedAmount > 500_000);
         if (behind && (widthSetting < 0 || fpsSetting <= 0)) {
@@ -498,6 +498,178 @@ async function publish(
     syncActive();
   }
 
+  function setDirect(on: boolean) {
+    if (finished || direct === on) return;
+    direct = on;
+    debug(on ? "direct video" : "jpeg relay");
+    window.clearTimeout(timer);
+    timer = 0;
+    if (on) {
+      outbound.length = 0;
+      window.clearTimeout(retryTimer);
+      retryTimer = 0;
+      return;
+    }
+    if (displayMode === "live") void tick();
+  }
+
+  function closePeer() {
+    window.clearTimeout(disconnectTimer);
+    remoteReady = false;
+    remoteIce.length = 0;
+    rtpSender = null;
+    const current = peer;
+    peer = null;
+    if (!current) return;
+    current.onconnectionstatechange = null;
+    current.onicecandidate = null;
+    current.close();
+  }
+
+  function scheduleRetry() {
+    if (retryTimer || finished || direct) return;
+    retryTimer = window.setTimeout(() => {
+      retryTimer = 0;
+      if (!finished && !direct) void startPeer();
+    }, 20_000);
+  }
+
+  function tuneSender() {
+    if (!rtpSender) return;
+    const source = availableWidth() || 1280;
+    const target = activeWidth > 0 ? activeWidth : source;
+    const scale = source > target ? source / target : 1;
+    try {
+      const params = rtpSender.getParameters();
+      if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+      params.degradationPreference = lan ? "maintain-resolution" : "maintain-framerate";
+      const encoding = params.encodings[0];
+      if (!encoding) return;
+      encoding.maxBitrate = screenBitrate(target, activeFps || 30, quality, lan);
+      encoding.maxFramerate = activeFps || 30;
+      encoding.scaleResolutionDownBy = scale;
+      if (lan) encoding.networkPriority = "high";
+      rtpSender.setParameters(params).catch(() => undefined);
+    } catch {
+      // Parameters can be rejected until the offer is applied.
+    }
+  }
+
+  async function notePath(connection: RTCPeerConnection) {
+    try {
+      const stats = await connection.getStats();
+      let pair: RTCStats | undefined;
+      stats.forEach((report) => {
+        if (report.type === "transport" && "selectedCandidatePairId" in report) {
+          const selected = stats.get(String(report.selectedCandidatePairId));
+          if (selected) pair = selected;
+        }
+        if (report.type === "candidate-pair" && "state" in report && report.state === "succeeded") {
+          const selected = "selected" in report && report.selected;
+          const nominated = "nominated" in report && report.nominated;
+          if (selected || nominated) pair = report;
+        }
+      });
+      if (!pair || !("localCandidateId" in pair)) return false;
+      const remote = "remoteCandidateId" in pair ? stats.get(String(pair.remoteCandidateId)) : undefined;
+      const local = stats.get(String(pair.localCandidateId));
+      const remoteKind = remote && "candidateType" in remote ? String(remote.candidateType) : "";
+      const localKind = local && "candidateType" in local ? String(local.candidateType) : "";
+      const host = (remoteKind || localKind) === "host";
+      if (host !== lan) {
+        lan = host;
+        tuneSender();
+        debug(host ? "path host" : "path relay");
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function startPeer() {
+    if (finished || typeof RTCPeerConnection !== "function" || !track) return;
+    const generation = ++peerGeneration;
+    window.clearTimeout(retryTimer);
+    retryTimer = 0;
+    closePeer();
+    const connection = new RTCPeerConnection({ iceServers: normalizeIce(iceServers) });
+    peer = connection;
+    try {
+      const transceiver = connection.addTransceiver(track, { direction: "sendonly", streams: [stream] });
+      rtpSender = transceiver.sender;
+      preferH264(transceiver);
+      tuneSender();
+      connection.onicecandidate = (event) => {
+        if (generation !== peerGeneration || !event.candidate || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({ type: "ice", candidate: event.candidate.toJSON() }));
+      };
+      connection.onconnectionstatechange = () => {
+        if (generation !== peerGeneration) return;
+        debug(`peer ${connection.connectionState}`);
+        if (connection.connectionState === "connected") {
+          window.clearTimeout(disconnectTimer);
+          tuneSender();
+          void notePath(connection).then((found) => {
+            if (found || generation !== peerGeneration) return;
+            window.setTimeout(() => {
+              if (generation === peerGeneration) void notePath(connection);
+            }, 500);
+          });
+        }
+        if (connection.connectionState === "failed") {
+          setDirect(false);
+          scheduleRetry();
+        }
+        if (connection.connectionState === "disconnected") {
+          window.clearTimeout(disconnectTimer);
+          disconnectTimer = window.setTimeout(() => {
+            if (generation !== peerGeneration) return;
+            if (connection.connectionState === "disconnected" || connection.connectionState === "failed") {
+              setDirect(false);
+              scheduleRetry();
+            }
+          }, 3000);
+        }
+      };
+      const offer = await connection.createOffer();
+      if (generation !== peerGeneration || finished) return;
+      await connection.setLocalDescription(offer);
+      if (generation !== peerGeneration || finished || ws.readyState !== WebSocket.OPEN || !connection.localDescription) return;
+      ws.send(JSON.stringify({ type: "offer", sdp: connection.localDescription }));
+    } catch (error) {
+      debug(`peer failed ${error instanceof Error ? error.message : "setup"}`);
+      if (generation === peerGeneration) scheduleRetry();
+    }
+  }
+
+  async function acceptAnswer(sdp: RTCSessionDescriptionInit) {
+    const connection = peer;
+    const generation = peerGeneration;
+    if (!connection) return;
+    await connection.setRemoteDescription(sdp);
+    if (generation !== peerGeneration || peer !== connection) return;
+    remoteReady = true;
+    const queued = remoteIce.splice(0, remoteIce.length);
+    for (const candidate of queued) {
+      try {
+        await connection.addIceCandidate(candidate);
+      } catch {
+        debug("ice rejected");
+      }
+    }
+    tuneSender();
+  }
+
+  async function acceptIce(candidate: RTCIceCandidateInit | null) {
+    if (!candidate) return;
+    if (!peer || !remoteReady) {
+      remoteIce.push(candidate);
+      return;
+    }
+    await peer.addIceCandidate(candidate);
+  }
+
   ws.onmessage = (event) => {
     if (typeof event.data !== "string") return;
     const message = JSON.parse(event.data) as {
@@ -505,27 +677,29 @@ async function publish(
       width?: number;
       fps?: number;
       quality?: number;
+      latency?: string;
       sdp?: RTCSessionDescriptionInit;
-      candidate?: RTCIceCandidateInit;
+      candidate?: RTCIceCandidateInit | null;
     };
     if (message.type === "config") applyConfig(message);
-    if (message.type === "answer" && message.sdp && pc) {
-      void pc.setRemoteDescription(message.sdp).catch(() => undefined);
-    }
-    if (message.type === "ice" && message.candidate && pc) {
-      void pc.addIceCandidate(message.candidate).catch(() => undefined);
-    }
-    if (message.type === "video-ready") nativeLive = true;
-    if (message.type === "video-stopped") stopNative();
-    if (message.type === "ready" && !timer) {
+    if (message.type === "ready") {
       debug("panel receiver is connected");
-      void startNative().catch(() => undefined);
+      const wasDirect = direct;
+      setDirect(false);
+      void startPeer();
       if (displayMode === "live") {
         hooks.onStatus("You are sharing your screen.");
-        void tick();
+        if (!wasDirect && !timer) void tick();
       } else {
         void sendStillFrame(displayMode);
       }
+    }
+    if (message.type === "answer" && message.sdp) void acceptAnswer(message.sdp).catch(() => debug("answer rejected"));
+    if (message.type === "ice") void acceptIce(message.candidate ?? null).catch(() => debug("ice rejected"));
+    if (message.type === "video-ready") setDirect(true);
+    if (message.type === "video-stopped") {
+      setDirect(false);
+      scheduleRetry();
     }
     if (message.type === "full") stop("This room is already showing 4 screens.", false);
     if (message.type === "hangup") stop("The panel stopped the share.", false);
@@ -628,6 +802,49 @@ function paint(
     canvas.height = height;
   }
   context.drawImage(source, 0, 0, width, height);
+}
+
+function preferH264(transceiver: RTCRtpTransceiver) {
+  const capabilities = RTCRtpSender.getCapabilities?.("video");
+  if (!capabilities || typeof transceiver.setCodecPreferences !== "function") return;
+  const rank = (mimeType: string) => (mimeType.toLowerCase() === "video/h264" ? 0 : mimeType.toLowerCase() === "video/vp8" ? 1 : 2);
+  const codecs = capabilities.codecs.slice().sort((left, right) => rank(left.mimeType) - rank(right.mimeType));
+  try {
+    transceiver.setCodecPreferences(codecs);
+  } catch {
+    // This browser rejects a reordered capability list.
+  }
+}
+
+function screenBitrate(width: number, fps: number, quality: number, lan: boolean) {
+  const base = lan
+    ? width >= 2560
+      ? 22_000_000
+      : width >= 1920
+        ? 16_000_000
+        : width >= 1280
+          ? 12_000_000
+          : 4_000_000
+    : width >= 2560
+      ? 6_000_000
+      : width >= 1920
+        ? 4_000_000
+        : width >= 1280
+          ? 2_500_000
+          : 1_200_000;
+  const scaled = base * (Math.min(60, Math.max(1, fps)) / 30) * Math.min(1, Math.max(0.35, quality));
+  return Math.round(Math.min(lan ? 30_000_000 : 8_000_000, Math.max(350_000, scaled)));
+}
+
+function normalizeIce(servers: IceServer[]): RTCIceServer[] {
+  return servers
+    .filter((server) => (Array.isArray(server.urls) ? server.urls.length > 0 : Boolean(server.urls)))
+    .map((server) => {
+      const next: RTCIceServer = { urls: server.urls };
+      if (server.username) next.username = server.username;
+      if (server.credential) next.credential = server.credential;
+      return next;
+    });
 }
 
 function labelWidth(width: number) {

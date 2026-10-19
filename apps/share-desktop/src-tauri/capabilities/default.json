@@ -1,0 +1,15 @@
+{
+  "identifier": "default",
+  "description": "The share window can call the local share commands.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "allow-load-settings",
+    "allow-save-settings",
+    "allow-prepare-share",
+    "allow-list-sources",
+    "allow-start-share",
+    "allow-set-display-mode",
+    "allow-stop-share"
+  ]
+}

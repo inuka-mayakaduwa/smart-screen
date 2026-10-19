@@ -1,4 +1,4 @@
-FROM node:22-alpine
+FROM node:22-alpine AS dev
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -7,4 +7,7 @@ COPY src ./src
 ENV PORT=4000
 ENV DATA_DIR=/data
 EXPOSE 4000
-CMD ["./node_modules/.bin/tsx", "src/index.ts"]
+CMD ["npm", "run", "dev:docker"]
+
+FROM dev AS start
+CMD ["npm", "start"]
