@@ -5,7 +5,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use webrtc::api::interceptor_registry::register_default_interceptors;
-use webrtc::api::media_engine::{MediaEngine, MIME_TYPE_H264};
+use webrtc::api::media_engine::{MediaEngine, MIME_TYPE_H264, MIME_TYPE_OPUS};
 use webrtc::api::APIBuilder;
 use webrtc::ice_transport::ice_server::RTCIceServer;
 use webrtc::interceptor::registry::Registry;
@@ -58,12 +58,13 @@ struct IceJson {
 pub struct Peer {
     connection: Arc<webrtc::peer_connection::RTCPeerConnection>,
     track: Arc<TrackLocalStaticSample>,
+    audio: Option<Arc<TrackLocalStaticSample>>,
     pending_ice: Arc<Mutex<Vec<String>>>,
     ice_open: Arc<AtomicBool>,
 }
 
 impl Peer {
-    pub async fn open(servers: &[IceServer], force_key: Arc<AtomicBool>, ice_tx: tokio::sync::mpsc::UnboundedSender<String>, state_tx: tokio::sync::mpsc::UnboundedSender<String>) -> Result<Self, String> {
+    pub async fn open(servers: &[IceServer], force_key: Arc<AtomicBool>, ice_tx: tokio::sync::mpsc::UnboundedSender<String>, state_tx: tokio::sync::mpsc::UnboundedSender<String>, with_audio: bool) -> Result<Self, String> {
         let mut media = MediaEngine::default();
         media
             .register_codec(
@@ -86,6 +87,18 @@ impl Peer {
                 RTPCodecType::Video,
             )
             .map_err(|error| error.to_string())?;
+        if with_audio {
+            media
+                .register_codec(
+                    RTCRtpCodecParameters {
+                        capability: opus_capability(),
+                        payload_type: 111,
+                        stats_id: "opus".into(),
+                    },
+                    RTPCodecType::Audio,
+                )
+                .map_err(|error| error.to_string())?;
+        }
         let mut registry = Registry::new();
         registry = register_default_interceptors(registry, &mut media).map_err(|error| error.to_string())?;
         let api = APIBuilder::new().with_media_engine(media).with_interceptor_registry(registry).build();
@@ -131,6 +144,20 @@ impl Peer {
                 }
             }
         });
+        let audio = if with_audio {
+            let track = Arc::new(TrackLocalStaticSample::new(opus_capability(), "audio".into(), "screen".into()));
+            let sender = connection
+                .add_track(Arc::clone(&track) as Arc<dyn TrackLocal + Send + Sync>)
+                .await
+                .map_err(|error| error.to_string())?;
+            tokio::spawn(async move {
+                let mut buffer = vec![0u8; 1500];
+                while let Ok((_, _)) = sender.read(&mut buffer).await {}
+            });
+            Some(track)
+        } else {
+            None
+        };
         let pending_ice = Arc::new(Mutex::new(Vec::new()));
         let ice_open = Arc::new(AtomicBool::new(false));
         let pending = pending_ice.clone();
@@ -158,7 +185,7 @@ impl Peer {
                 let _ = states.send(label);
             })
         }));
-        Ok(Self { connection, track, pending_ice, ice_open })
+        Ok(Self { connection, track, audio, pending_ice, ice_open })
     }
 
     pub async fn offer_sdp(&self) -> Result<String, String> {
@@ -186,6 +213,18 @@ impl Peer {
         let value = serde_json::to_value(&init).map_err(|error| error.to_string())?;
         let parsed = serde_json::from_value(value).map_err(|error| error.to_string())?;
         self.connection.add_ice_candidate(parsed).await.map_err(|error| error.to_string())
+    }
+
+    pub async fn write_audio(&self, bytes: Vec<u8>, duration: Duration) -> Result<(), String> {
+        let Some(track) = &self.audio else { return Ok(()) };
+        track
+            .write_sample(&Sample {
+                data: Bytes::from(bytes),
+                duration,
+                ..Default::default()
+            })
+            .await
+            .map_err(|error| error.to_string())
     }
 
     pub async fn write(&self, bytes: Vec<u8>, duration: Duration) -> Result<(), String> {
@@ -220,6 +259,16 @@ impl Peer {
 
     pub async fn close(self) {
         self.connection.close().await.ok();
+    }
+}
+
+fn opus_capability() -> RTCRtpCodecCapability {
+    RTCRtpCodecCapability {
+        mime_type: MIME_TYPE_OPUS.to_owned(),
+        clock_rate: 48000,
+        channels: 2,
+        sdp_fmtp_line: "minptime=10;useinbandfec=1".into(),
+        rtcp_feedback: vec![],
     }
 }
 
