@@ -10,6 +10,7 @@ use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tokio::sync::watch;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
+use crate::audio::{self, Packet};
 use crate::capture::{list_sources, Capturer, Frame};
 use crate::encode::Encoder;
 use crate::jpeg::{encode_jpeg, preview_jpeg, resting_jpeg, target_frame};
@@ -18,7 +19,7 @@ use crate::picture::{active_fps, active_size, screen_bitrate, Latency, Picture};
 use crate::protocol::{self, answer_sdp, display_state_message, hangup_message, ice_fields, offer_message};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Mode {
+pub enum Mode {
     Live,
     Paused,
     Frozen,
@@ -88,6 +89,7 @@ pub fn start(app: AppHandle, server: String, code: String, source_id: String) ->
     let capture_force = force_key.clone();
     let capture_still = still.clone();
     let capture_mode = mode_rx.clone();
+    let audio_mode = mode_rx;
     let capture_app = app.clone();
     let capture_queued = jpeg_queued.clone();
     std::thread::Builder::new()
@@ -113,6 +115,8 @@ pub fn start(app: AppHandle, server: String, code: String, source_id: String) ->
             }
         })
         .map_err(|error| error.to_string())?;
+    let audio_rx = audio::start(stop_flag.clone(), audio_mode, app.clone());
+    emit(&app, serde_json::json!({ "kind": "status", "text": audio::share_status(audio_rx.is_some()) }));
     let net_stop = stop_flag.clone();
     let net_picture = picture.clone();
     let net_direct = direct.clone();
@@ -151,6 +155,7 @@ pub fn start(app: AppHandle, server: String, code: String, source_id: String) ->
             ctrl_rx,
             jpeg_rx,
             h264_rx,
+            audio_rx,
             ice_tx,
             state_tx,
             net_queued,
@@ -344,6 +349,7 @@ async fn network_loop(
     mut ctrl_rx: UnboundedReceiver<Ctrl>,
     mut jpeg_rx: mpsc::Receiver<Vec<u8>>,
     mut h264_rx: mpsc::Receiver<crate::encode::Encoded>,
+    mut audio_rx: Option<mpsc::Receiver<Packet>>,
     ice_tx: UnboundedSender<String>,
     state_tx: UnboundedSender<String>,
     jpeg_queued: Arc<AtomicUsize>,
@@ -361,7 +367,7 @@ async fn network_loop(
         Err(_) => return Some("Could not reach the room signal server.".into()),
     };
     let (mut write, mut read) = socket.split();
-    emit(&app, serde_json::json!({ "kind": "status", "text": "You are sharing your screen." }));
+    emit(&app, serde_json::json!({ "kind": "status", "text": audio::share_status(audio_rx.is_some()) }));
     let mut peer: Option<Peer> = None;
     let mut remote_answer: Option<String> = None;
     let mut remote_ice = Vec::new();
@@ -369,6 +375,8 @@ async fn network_loop(
     let mut retry_at: Option<Instant> = None;
     let mut restart = false;
     let mut reason = None;
+    let mut audio_warned = false;
+    let sound = audio_rx.is_some();
     loop {
         if stop.load(Ordering::SeqCst) {
             let _ = write.send(Message::Text(hangup_message().into())).await;
@@ -450,6 +458,24 @@ async fn network_loop(
                 let _ = write.send(Message::Binary(jpeg.into())).await;
                 jpeg_queued.fetch_sub(1, Ordering::SeqCst);
             }
+            packet = async {
+                match audio_rx.as_mut() {
+                    Some(rx) => rx.recv().await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                match packet {
+                    Some(packet) => {
+                        if let Some(peer) = peer.as_ref() {
+                            if peer.write_audio(packet.bytes, packet.duration).await.is_err() && !audio_warned {
+                                eprintln!("[share-desktop] audio write failed");
+                                audio_warned = true;
+                            }
+                        }
+                    }
+                    None => audio_rx = None,
+                }
+            }
             _ = retry => {
                 restart = true;
                 retry_at = None;
@@ -463,7 +489,7 @@ async fn network_loop(
                 current.close().await;
             }
             answer_ready = false;
-            match Peer::open(&session.ice_servers, force_key.clone(), ice_tx.clone(), state_tx.clone()).await {
+            match Peer::open(&session.ice_servers, force_key.clone(), ice_tx.clone(), state_tx.clone(), sound && audio_rx.is_some()).await {
                 Ok(opened) => match opened.offer_sdp().await {
                     Ok(sdp) => {
                         let _ = write.send(Message::Text(offer_message(&sdp).into())).await;

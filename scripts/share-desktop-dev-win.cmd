@@ -27,6 +27,9 @@ set "RCBIN=%TEMP%\winsdk-full\c\bin\10.0.22621.0\x64"
 if exist "%RCBIN%\rc.exe" set "PATH=%RCBIN%;%PATH%"
 
 set "PATH=%USERPROFILE%\.cargo\bin;%PATH%"
+rem libopus is built with CMake. NMake uses cl.exe from this environment.
+set CMAKE_POLICY_VERSION_MINIMUM=3.5
+set CMAKE_GENERATOR=NMake Makefiles
 
 cd /d "%~dp0.."
 if /I "%~1"=="build" (

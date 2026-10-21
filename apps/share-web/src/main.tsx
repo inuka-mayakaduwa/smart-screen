@@ -14,6 +14,26 @@ type DisplayMode = "live" | "paused" | "frozen";
 
 type IceServer = { urls: string | string[]; username?: string; credential?: string };
 
+async function captureDisplay(video: MediaTrackConstraints) {
+  try {
+    return await navigator.mediaDevices.getDisplayMedia({
+      video,
+      audio: { suppressLocalAudioPlayback: true },
+      systemAudio: "include",
+    } as unknown as DisplayMediaStreamOptions);
+  } catch (error) {
+    const cancelled = error instanceof DOMException && (error.name === "NotAllowedError" || error.name === "AbortError");
+    if (cancelled) throw error;
+  }
+  try {
+    return await navigator.mediaDevices.getDisplayMedia({ video, audio: true });
+  } catch (error) {
+    const cancelled = error instanceof DOMException && (error.name === "NotAllowedError" || error.name === "AbortError");
+    if (cancelled) throw error;
+  }
+  return navigator.mediaDevices.getDisplayMedia({ video, audio: false });
+}
+
 function App() {
   const [code, setCode] = useState(initialCode);
   const [status, setStatus] = useState(initialCode ? "Ready to share this screen." : "Enter the code on the room panel.");
@@ -62,17 +82,14 @@ function App() {
         throw new Error(body.error || "This room code is not active");
       }
       const body = (await session.json()) as { iceServers?: IceServer[] };
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
-        audio: false,
-      });
+      const video = { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } };
+      const stream = await captureDisplay(video);
       await publish(stream, socketUrl, body.iceServers ?? [], {
         onStatus: setStatus,
         onReady: (next) => {
           controls.current = next;
           setStarting(false);
           setLive(true);
-          setStatus("You are sharing your screen.");
         },
         onEnded: finish,
         previewHost: previewHost.current,
@@ -207,6 +224,7 @@ async function publish(
   let displayMode: DisplayMode = "live";
   const outbound: ArrayBuffer[] = [];
   const track = stream.getVideoTracks()[0];
+  const audioTrack = stream.getAudioTracks()[0];
   const capturer = openGrabber(track);
   if (track) track.contentHint = "text";
   let peer: RTCPeerConnection | null = null;
@@ -252,14 +270,21 @@ async function publish(
     hooks.onEnded(status);
   }
 
+  function liveStatus() {
+    return audioTrack && audioTrack.readyState === "live"
+      ? "The panel is receiving the screen and its sound."
+      : "You are sharing your screen.";
+  }
+
   function setDisplayMode(next: DisplayMode) {
     if (finished) return;
     displayMode = next;
+    if (audioTrack) audioTrack.enabled = displayMode === "live";
     showFrozenPreview(displayMode === "frozen");
     window.clearTimeout(timer);
     if (displayMode === "live") {
       sendDisplayState("live");
-      hooks.onStatus("You are sharing your screen.");
+      hooks.onStatus(liveStatus());
       if (!direct) schedule();
       return;
     }
@@ -655,6 +680,9 @@ async function publish(
       const transceiver = connection.addTransceiver(track, { direction: "sendonly", streams: [stream] });
       rtpSender = transceiver.sender;
       preferCodec(transceiver, codecPref);
+      if (audioTrack && audioTrack.readyState === "live") {
+        connection.addTransceiver(audioTrack, { direction: "sendonly", streams: [stream] });
+      }
       tuneSender();
       connection.onicecandidate = (event) => {
         if (generation !== peerGeneration || !event.candidate || ws.readyState !== WebSocket.OPEN) return;
@@ -785,6 +813,10 @@ async function publish(
   track?.addEventListener("ended", () => {
     stop("Sharing stopped.", true);
   });
+  audioTrack?.addEventListener("ended", () => {
+    if (!finished && displayMode === "live") hooks.onStatus(liveStatus());
+  });
+  hooks.onStatus(liveStatus());
   hooks.onReady({
     stop: () => stop("Sharing stopped.", true),
     setDisplayMode,
