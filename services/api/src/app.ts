@@ -82,9 +82,11 @@ export function createApp(store: Store, config: Config): AppContext {
   app.use(express.json({ limit: "1mb" }));
   app.use("/api/download", express.urlencoded({ extended: false, limit: "4kb" }));
 
-  app.get("/api/health", (_req, res) => {
+  const health = (_req: Request, res: Response) => {
     res.json({ ok: true });
-  });
+  };
+  app.get("/health", health);
+  app.get("/api/health", health);
 
   app.get("/api/config/public", (_req, res) => {
     res.json({

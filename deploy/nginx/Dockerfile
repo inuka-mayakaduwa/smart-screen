@@ -30,3 +30,5 @@ COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=admin /src/dist /usr/share/nginx/html/admin
 COPY --from=share /src/dist /usr/share/nginx/html/share
 COPY --from=board /src/dist /usr/share/nginx/html/board
+HEALTHCHECK --interval=10s --timeout=5s --retries=5 --start-period=15s \
+  CMD wget -q --spider http://127.0.0.1/health || exit 1
