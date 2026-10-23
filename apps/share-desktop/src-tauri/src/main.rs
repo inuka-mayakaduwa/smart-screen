@@ -39,6 +39,11 @@ fn set_display_mode(mode: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn set_volume(percent: u32) {
+    session::set_volume(percent);
+}
+
+#[tauri::command]
 fn stop_share() {
     session::stop();
 }
@@ -52,6 +57,7 @@ fn main() {
             list_sources,
             start_share,
             set_display_mode,
+            set_volume,
             stop_share
         ])
         .build(tauri::generate_context!())

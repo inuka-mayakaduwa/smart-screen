@@ -10,6 +10,7 @@
     "allow-list-sources",
     "allow-start-share",
     "allow-set-display-mode",
+    "allow-set-volume",
     "allow-stop-share"
   ]
 }
