@@ -207,6 +207,7 @@ async function publish(
   const context = canvas.getContext("2d", { alpha: false });
   const ws = new WebSocket(socketUrl);
   debug(`socket ${socketUrl}`);
+  ws.onopen = () => sendAudio("pending");
   let timer = 0;
   let sending = false;
   let sent = false;
@@ -239,6 +240,7 @@ async function publish(
   let connectWatch = 0;
   let codecPref: "h264" | "vp8" = "h264";
   let retryDelay = 3_000;
+  let audioTransceiver: "pending" | "added" | "skipped" = "pending";
   const remoteIce: RTCIceCandidateInit[] = [];
   const JPEG_AUTO_CAP = 1280;
   const OUTBOUND_CAP = 6;
@@ -274,6 +276,24 @@ async function publish(
     return audioTrack && audioTrack.readyState === "live"
       ? "The panel is receiving the screen and its sound."
       : "You are sharing your screen.";
+  }
+
+  function sendAudio(transceiver: "pending" | "added" | "skipped") {
+    audioTransceiver = transceiver;
+    const payload = {
+      type: "audio",
+      tracks: stream.getAudioTracks().length,
+      label: (audioTrack?.label || "").slice(0, 80),
+      readyState: audioTrack?.readyState || "none",
+      enabled: Boolean(audioTrack?.enabled),
+      muted: Boolean(audioTrack?.muted),
+      transceiver,
+    };
+    debug(
+      `audio tracks=${payload.tracks} label=${payload.label} state=${payload.readyState} enabled=${payload.enabled} muted=${payload.muted} transceiver=${transceiver}`,
+    );
+    if (ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify(payload));
   }
 
   function setDisplayMode(next: DisplayMode) {
@@ -682,6 +702,11 @@ async function publish(
       preferCodec(transceiver, codecPref);
       if (audioTrack && audioTrack.readyState === "live") {
         connection.addTransceiver(audioTrack, { direction: "sendonly", streams: [stream] });
+        debug("audio transceiver added");
+        sendAudio("added");
+      } else {
+        debug(`audio transceiver skipped tracks=${stream.getAudioTracks().length} state=${audioTrack?.readyState ?? "none"}`);
+        sendAudio("skipped");
       }
       tuneSender();
       connection.onicecandidate = (event) => {
@@ -814,6 +839,7 @@ async function publish(
     stop("Sharing stopped.", true);
   });
   audioTrack?.addEventListener("ended", () => {
+    sendAudio(audioTransceiver === "added" ? "added" : "skipped");
     if (!finished && displayMode === "live") hooks.onStatus(liveStatus());
   });
   hooks.onStatus(liveStatus());
