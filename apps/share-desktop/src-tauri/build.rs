@@ -8,6 +8,7 @@ fn main() {
                 "list_sources",
                 "start_share",
                 "set_display_mode",
+                "set_volume",
                 "stop_share",
             ]),
         ),

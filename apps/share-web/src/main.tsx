@@ -8,6 +8,8 @@ const apiBase = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 type ShareControls = {
   stop: () => void;
   setDisplayMode: (mode: DisplayMode) => void;
+  setVolume: (level: number) => void;
+  sound: boolean;
 };
 
 type DisplayMode = "live" | "paused" | "frozen";
@@ -40,6 +42,8 @@ function App() {
   const [starting, setStarting] = useState(false);
   const [live, setLive] = useState(false);
   const [displayMode, setDisplayMode] = useState<DisplayMode>("live");
+  const [volume, setVolume] = useState(100);
+  const [sound, setSound] = useState(false);
   const controls = useRef<ShareControls | null>(null);
   const previewHost = useRef<HTMLDivElement>(null);
   const socketUrl = useMemo(() => signalingUrl(apiBase, normalize(code)), [code]);
@@ -47,6 +51,8 @@ function App() {
   function finish(message: string) {
     controls.current = null;
     setDisplayMode("live");
+    setVolume(100);
+    setSound(false);
     setLive(false);
     setStarting(false);
     setStatus(message);
@@ -75,6 +81,8 @@ function App() {
     setStarting(true);
     setDisplayMode("live");
     setStatus("Asking the browser for the screen…");
+    const playback = new AudioContext();
+    void playback.resume();
     try {
       const session = await fetch(`${apiBase}/api/share/${encodeURIComponent(formatShareCode(roomCode))}`);
       if (!session.ok) {
@@ -84,10 +92,12 @@ function App() {
       const body = (await session.json()) as { iceServers?: IceServer[] };
       const video = { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } };
       const stream = await captureDisplay(video);
-      await publish(stream, socketUrl, body.iceServers ?? [], {
+      await publish(stream, socketUrl, body.iceServers ?? [], playback, {
         onStatus: setStatus,
         onReady: (next) => {
           controls.current = next;
+          setSound(next.sound);
+          setVolume(100);
           setStarting(false);
           setLive(true);
         },
@@ -95,6 +105,7 @@ function App() {
         previewHost: previewHost.current,
       });
     } catch (error) {
+      void playback.close();
       const cancelled = error instanceof DOMException && (error.name === "NotAllowedError" || error.name === "AbortError");
       finish(cancelled ? "Screen sharing was cancelled." : error instanceof Error ? error.message : "Could not start sharing");
     }
@@ -129,6 +140,22 @@ function App() {
             <span className="dot" />
             {displayMode === "paused" ? "Paused" : displayMode === "frozen" ? "Frozen" : "Live"}
           </p>
+          <label className="volume">
+            <span>{sound ? `Panel sound ${volume}%` : "No system audio"}</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={volume}
+              disabled={!sound}
+              aria-label="Panel sound"
+              onChange={(event) => {
+                const next = Number(event.target.value);
+                setVolume(next);
+                controls.current?.setVolume(next / 100);
+              }}
+            />
+          </label>
           <div className="actions">
             <button
               type="button"
@@ -179,6 +206,7 @@ async function publish(
   stream: MediaStream,
   socketUrl: string,
   iceServers: IceServer[],
+  playback: AudioContext,
   hooks: {
     onStatus: (value: string) => void;
     onReady: (controls: ShareControls) => void;
@@ -226,6 +254,7 @@ async function publish(
   const outbound: ArrayBuffer[] = [];
   const track = stream.getVideoTracks()[0];
   const audioTrack = stream.getAudioTracks()[0];
+  const heard = openPanelAudio(audioTrack, playback);
   const capturer = openGrabber(track);
   if (track) track.contentHint = "text";
   let peer: RTCPeerConnection | null = null;
@@ -265,6 +294,7 @@ async function publish(
       }
     }
     stream.getTracks().forEach((item) => item.stop());
+    heard.close();
     showFrozenPreview(false);
     preview.remove();
     frozenPreview.remove();
@@ -300,6 +330,7 @@ async function publish(
     if (finished) return;
     displayMode = next;
     if (audioTrack) audioTrack.enabled = displayMode === "live";
+    heard.setLive(displayMode === "live");
     showFrozenPreview(displayMode === "frozen");
     window.clearTimeout(timer);
     if (displayMode === "live") {
@@ -700,8 +731,9 @@ async function publish(
       const transceiver = connection.addTransceiver(track, { direction: "sendonly", streams: [stream] });
       rtpSender = transceiver.sender;
       preferCodec(transceiver, codecPref);
-      if (audioTrack && audioTrack.readyState === "live") {
-        connection.addTransceiver(audioTrack, { direction: "sendonly", streams: [stream] });
+      if (heard.track && heard.track.readyState === "live") {
+        const audioStream = heard.track === audioTrack ? stream : new MediaStream([heard.track]);
+        connection.addTransceiver(heard.track, { direction: "sendonly", streams: [audioStream] });
         debug("audio transceiver added");
         sendAudio("added");
       } else {
@@ -846,7 +878,62 @@ async function publish(
   hooks.onReady({
     stop: () => stop("Sharing stopped.", true),
     setDisplayMode,
+    setVolume: heard.setLevel,
+    sound: heard.sound,
   });
+}
+
+function openPanelAudio(track: MediaStreamTrack | undefined, context: AudioContext): {
+  track: MediaStreamTrack | undefined;
+  sound: boolean;
+  setLevel: (level: number) => void;
+  setLive: (live: boolean) => void;
+  close: () => void;
+} {
+  const idle = {
+    track,
+    sound: false,
+    setLevel(_level: number) {},
+    setLive(_live: boolean) {},
+    close() {
+      void context.close();
+    },
+  };
+  if (!track) return idle;
+  try {
+    const source = context.createMediaStreamSource(new MediaStream([track]));
+    const gain = context.createGain();
+    const destination = context.createMediaStreamDestination();
+    gain.gain.value = 1;
+    source.connect(gain);
+    gain.connect(destination);
+    const processed = destination.stream.getAudioTracks()[0];
+    if (!processed) return idle;
+    let level = 1;
+    let live = true;
+    const apply = () => {
+      gain.gain.value = live ? level : 0;
+    };
+    void context.resume();
+    return {
+      track: processed,
+      sound: true,
+      setLevel(next: number) {
+        level = Math.min(1, Math.max(0, next));
+        void context.resume();
+        apply();
+      },
+      setLive(next: boolean) {
+        live = next;
+        apply();
+      },
+      close() {
+        void context.close();
+      },
+    };
+  } catch {
+    return idle;
+  }
 }
 
 function paintRestingImage(

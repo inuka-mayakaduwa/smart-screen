@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -37,6 +37,7 @@ struct Running {
     ctrl: UnboundedSender<Ctrl>,
     mode: watch::Sender<Mode>,
     still: Arc<AtomicU64>,
+    gain: Arc<AtomicU32>,
 }
 
 static CURRENT: Mutex<Option<Running>> = Mutex::new(None);
@@ -115,7 +116,15 @@ pub fn start(app: AppHandle, server: String, code: String, source_id: String) ->
             }
         })
         .map_err(|error| error.to_string())?;
-    let audio_rx = audio::start(stop_flag.clone(), audio_mode, app.clone());
+    let gain = Arc::new(AtomicU32::new(100));
+    *CURRENT.lock().unwrap() = Some(Running {
+        stop: stop_flag.clone(),
+        ctrl: ctrl_tx.clone(),
+        mode: mode_tx,
+        still,
+        gain: gain.clone(),
+    });
+    let audio_rx = audio::start(stop_flag.clone(), audio_mode, gain, app.clone());
     emit(&app, serde_json::json!({ "kind": "status", "text": audio::share_status(audio_rx.is_some()) }));
     let net_stop = stop_flag.clone();
     let net_picture = picture.clone();
@@ -165,7 +174,6 @@ pub fn start(app: AppHandle, server: String, code: String, source_id: String) ->
             emit(&ended, serde_json::json!({ "kind": "ended", "text": text }));
         }
     });
-    *CURRENT.lock().unwrap() = Some(Running { stop: stop_flag, ctrl: ctrl_tx, mode: mode_tx, still });
     Ok(())
 }
 
@@ -187,6 +195,12 @@ pub fn set_mode(mode: &str) -> Result<(), String> {
     };
     let _ = running.ctrl.send(Ctrl::Text(display_state_message(state)));
     Ok(())
+}
+
+pub fn set_volume(percent: u32) {
+    let current = CURRENT.lock().unwrap();
+    let Some(running) = current.as_ref() else { return };
+    running.gain.store(percent.min(100), Ordering::Relaxed);
 }
 
 pub fn stop() {

@@ -22,6 +22,7 @@ function App() {
   const [picking, setPicking] = useState(false);
   const [sources, setSources] = useState<Source[]>([]);
   const [displayMode, setDisplayMode] = useState<DisplayMode>("live");
+  const [volume, setVolume] = useState(100);
   const [preview, setPreview] = useState("");
 
   useEffect(() => {
@@ -44,6 +45,7 @@ function App() {
 
   function finish(message: string) {
     setDisplayMode("live");
+    setVolume(100);
     setLive(false);
     setStarting(false);
     setPicking(false);
@@ -89,12 +91,18 @@ function App() {
     }
   }
 
+  function changeVolume(next: number) {
+    setVolume(next);
+    void invoke("set_volume", { percent: next });
+  }
+
   function toggleDisplayMode(next: Exclude<DisplayMode, "live">) {
     const mode = displayMode === next ? "live" : next;
     setDisplayMode(mode);
     void invoke("set_display_mode", { mode });
   }
 
+  const sound = !status.toLowerCase().includes("video only");
   const displays = sources.filter((source) => source.kind === "display");
   const windows = sources.filter((source) => source.kind === "window");
 
@@ -121,6 +129,18 @@ function App() {
             <span className="dot" />
             {displayMode === "paused" ? "Paused" : displayMode === "frozen" ? "Frozen" : "Live"}
           </p>
+          <label className="volume">
+            <span>{sound ? `Panel sound ${volume}%` : "No system audio"}</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={volume}
+              disabled={!sound}
+              aria-label="Panel sound"
+              onChange={(event) => changeVolume(Number(event.target.value))}
+            />
+          </label>
           <div className="actions">
             <button type="button" className={displayMode === "paused" ? "pause on" : "pause"} onClick={() => toggleDisplayMode("paused")}>
               {displayMode === "paused" ? "Resume live" : "Pause display"}

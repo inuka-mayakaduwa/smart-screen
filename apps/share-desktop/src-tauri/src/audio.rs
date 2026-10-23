@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, mpsc::RecvTimeoutError};
 use std::thread;
 use std::time::Duration;
@@ -54,7 +54,7 @@ pub fn share_status(ready: bool) -> &'static str {
     }
 }
 
-pub fn start(stop: Arc<AtomicBool>, mode: watch::Receiver<Mode>, app: AppHandle) -> Option<mpsc::Receiver<Packet>> {
+pub fn start(stop: Arc<AtomicBool>, mode: watch::Receiver<Mode>, gain: Arc<AtomicU32>, app: AppHandle) -> Option<mpsc::Receiver<Packet>> {
     let (tx, rx) = mpsc::channel(8);
     let (ready_tx, ready_rx) = std::sync::mpsc::channel();
     let spawned = thread::Builder::new().name("share-audio".into()).spawn(move || {
@@ -84,7 +84,7 @@ pub fn start(stop: Arc<AtomicBool>, mode: watch::Receiver<Mode>, app: AppHandle)
             loopback.converter.mix.rate, loopback.converter.mix.channels
         );
         let _ = ready_tx.send(true);
-        if let Err(error) = loopback.run(&stop, &mode, &tx, &mut encoder) {
+        if let Err(error) = loopback.run(&stop, &mode, &gain, &tx, &mut encoder) {
             if !stop.load(Ordering::SeqCst) {
                 eprintln!("[share-desktop] audio stopped {error}");
                 emit_status(&app, false);
@@ -142,6 +142,7 @@ impl Loopback {
         &mut self,
         stop: &AtomicBool,
         mode: &watch::Receiver<Mode>,
+        gain: &AtomicU32,
         tx: &mpsc::Sender<Packet>,
         encoder: &mut Encoder,
     ) -> Result<(), String> {
@@ -171,7 +172,8 @@ impl Loopback {
                 self.converter.push(slice, silent);
             }
             unsafe { self.capture.ReleaseBuffer(frames).map_err(|error| error.to_string())? };
-            while let Some(frame) = self.converter.pull() {
+            while let Some(mut frame) = self.converter.pull() {
+                apply_gain(&mut frame, gain.load(Ordering::Relaxed));
                 let size = encoder.encode_float(&frame, &mut output).map_err(|error| error.to_string())?;
                 if size == 0 {
                     continue;
@@ -303,6 +305,42 @@ impl Converter {
             }
         }
         Some(frame)
+    }
+}
+
+fn apply_gain(frame: &mut [f32], percent: u32) {
+    if percent >= 100 {
+        return;
+    }
+    let gain = percent as f32 / 100.0;
+    for sample in frame {
+        *sample *= gain;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::apply_gain;
+
+    #[test]
+    fn full_volume_leaves_samples_unchanged() {
+        let mut frame = vec![0.5, -0.25];
+        apply_gain(&mut frame, 100);
+        assert_eq!(frame, vec![0.5, -0.25]);
+    }
+
+    #[test]
+    fn half_volume_scales_samples() {
+        let mut frame = vec![0.5, -0.25];
+        apply_gain(&mut frame, 50);
+        assert_eq!(frame, vec![0.25, -0.125]);
+    }
+
+    #[test]
+    fn zero_volume_silences_samples() {
+        let mut frame = vec![0.5, -0.25];
+        apply_gain(&mut frame, 0);
+        assert_eq!(frame, vec![0.0, 0.0]);
     }
 }
 
