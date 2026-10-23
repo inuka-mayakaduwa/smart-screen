@@ -113,8 +113,8 @@ The panel does not send its version to the server. Each side keeps its own numbe
 
 The installed APK has two values from `apps/room/app.json`:
 
-- **Version name** (`expo.version`) is the label shown in Settings. This build is `dev-1.0.2`.
-- **Version code** (`android.versionCode`) is the integer Android stores as the build number. This build is `2`. `npx expo prebuild --platform android` writes both values into `apps/room/android` from `app.json`. Run prebuild again after changing them, then `.\gradlew.bat assembleRelease`, or the APK keeps the previous code.
+- **Version name** (`expo.version`) is the label shown in Settings. This build is `dev-1.0.5`.
+- **Version code** (`android.versionCode`) is the integer Android stores as the build number. This build is `5`. `npx expo prebuild --platform android` writes both values into `apps/room/android` from `app.json`. Run prebuild again after changing them, then `.\gradlew.bat assembleRelease`, or the APK keeps the previous code.
 
 The control server stores one published APK. In admin Settings, upload it with a version name, a version code, and optional notes. A connected panel requests that record. When the published version code is greater than the version code installed on the device, the panel offers an update. The version name is the label only.
 
@@ -126,9 +126,9 @@ Settings → Panel chooses what happens next:
 
 Install downloads the APK from the control server and opens the Android package installer.
 
-### Build dev-1.0.2
+### Build dev-1.0.5
 
-`apps/room/app.json` is set to version name `dev-1.0.2` and version code `2`. From `apps/room`, write that version into the native project, then build:
+`apps/room/app.json` is set to version name `dev-1.0.5` and version code `5`. From `apps/room`, write that version into the native project, then build:
 
 ```powershell
 npx expo prebuild --platform android
@@ -144,10 +144,10 @@ adb install -r app\build\outputs\apk\release\app-release.apk
 
 In admin Settings, publish `apps/room/android/app/build/outputs/apk/release/app-release.apk` with:
 
-- Version name: `dev-1.0.2`
-- Version code: `2`
+- Version name: `dev-1.0.5`
+- Version code: `5`
 
-The version code in the form must match `android.versionCode` in the APK, and it must be higher than the code already published. If the form rejects `2`, raise `android.versionCode` in `apps/room/app.json` above the published code, run prebuild and `.\gradlew.bat assembleRelease` again, and publish that same number.
+The version code in the form must match `android.versionCode` in the APK, and it must be higher than the code already published. If the form rejects `5`, raise `android.versionCode` in `apps/room/app.json` above the published code, run prebuild and `.\gradlew.bat assembleRelease` again, and publish that same number.
 
 On a panel still on version code 1, open Settings → Panel and use Check for update, or reopen the app when the update method is Prompt on launch or Force.
 
