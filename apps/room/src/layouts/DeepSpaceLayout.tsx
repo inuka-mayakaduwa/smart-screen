@@ -1,20 +1,21 @@
 // GovTech Meet waiting screen: the Deep Space theme. Built from design/govtech-meet-rn-handoff.
 // HomeScreen owns the data (meetings, share code, joining flags); this layout derives the
 // seven-state model from it and renders the screen at 1920 × 1080 design units.
-import type { ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import type { PanelTheme } from "../themes";
 import type { Meeting, MeetingSlotSettings } from "../types";
 import { normalizeShareCode, shareHostPath, splitShareCode, spokenShareCode } from "../shareCode";
-import { ActionBlock } from "./deepSpace/ActionBlock";
+import { ActionArea } from "./deepSpace/ActionArea";
 import { Background } from "./deepSpace/Background";
 import { ErrorDetail, FooterNote, IdleDetail, IdleTitle, MeetingDetail, MeetingTitle, NextBooking, OfflineDetail, OfflineTitle } from "./deepSpace/blocks";
 import { GlassShareCard } from "./deepSpace/GlassShareCard";
 import { Header } from "./deepSpace/Header";
 import { DriftLayer, HandoverBlock, useReducedMotion } from "./deepSpace/motion";
 import { useScale } from "./deepSpace/scale";
-import { deriveScreen } from "./deepSpace/state";
-import { StatusLine } from "./deepSpace/StatusLine";
+import { ScreenPulse, type Pulse } from "./deepSpace/ScreenPulse";
+import { deriveScreen, type ScreenState } from "./deepSpace/state";
+import { StatusRoll } from "./deepSpace/StatusRoll";
 import { size, space } from "./deepSpace/tokens";
 import { WhiteboardTile } from "./deepSpace/WhiteboardTile";
 
@@ -79,8 +80,11 @@ export function DeepSpaceLayout({
   onRetryJoin,
   onCancelJoin,
 }: DeepSpaceLayoutProps) {
-  const { s } = useScale();
+  const { s, width, height } = useScale();
   const reduced = useReducedMotion();
+  const rootRef = useRef<View>(null);
+  const pulseCount = useRef(0);
+  const [pulse, setPulse] = useState<Pulse | null>(null);
   const model = deriveScreen({ meetings, nowMs: now.getTime(), offline, joining: joiningMeeting, error: errorMeeting });
   const slot = model.meetingIsCurrent ? nowSlot : nextSlot;
   const code = normalizeShareCode(shareCode);
@@ -88,6 +92,19 @@ export function DeepSpaceLayout({
   const spoken = spokenShareCode(code);
   const hostPath = shareHostPath(shareUrl, code, shareHost);
   const key = model.state;
+  // Blocks hand over (HANDOFF 6.2) between the idle, meeting and offline groups. Within the
+  // meeting group the status line rolls and the action area morphs instead, and the title,
+  // details, share card and tile stay put.
+  const group = groupOf(key);
+  const meetingKey = `${group}:${model.meeting?.id ?? ""}`;
+
+  // Screen pulse on a Join press: convert the button's window centre into this layout's space.
+  const handlePulse = useCallback((wx: number, wy: number) => {
+    rootRef.current?.measureInWindow((rx, ry) => {
+      pulseCount.current += 1;
+      setPulse({ id: pulseCount.current, cx: wx - rx, cy: wy - ry });
+    });
+  }, []);
 
   const title =
     key === "offline" ? (
@@ -123,29 +140,39 @@ export function DeepSpaceLayout({
     );
 
   return (
-    <View style={styles.root} pointerEvents="box-none">
+    <View ref={rootRef} style={styles.root} pointerEvents="box-none" collapsable={false}>
       <Background reduced={reduced} />
+      <ScreenPulse pulse={pulse} width={width} height={height} reduced={reduced} />
       <DriftLayer style={[styles.root, { paddingTop: s(space.screenPadTop), paddingBottom: s(space.screenPadBottom), paddingHorizontal: s(space.screenPadX) }]}>
         <Header logoUrl={logoUrl} brandName={brandName} roomName={roomName} clock={clock} sessionControl={sessionControl} />
 
         <View style={[styles.main, { gap: s(space.mainGap) }]} pointerEvents="box-none">
           <View style={{ alignItems: "center", gap: s(space.stackGap), maxWidth: s(1240) }} pointerEvents="box-none">
-            <HandoverBlock stateKey={key} index={0} reduced={reduced}>
-              <StatusLine label={model.statusLabel} dot={model.dot} ripple={model.ripple} reduced={reduced} />
+            <HandoverBlock stateKey={group} index={0} reduced={reduced}>
+              <StatusRoll label={model.statusLabel} dot={model.dot} ripple={model.ripple} reduced={reduced} snapKey={group} />
             </HandoverBlock>
-            <HandoverBlock stateKey={key} index={1} reduced={reduced} style={{ alignItems: "center" }}>
+            <HandoverBlock stateKey={meetingKey} index={1} reduced={reduced} style={{ alignItems: "center" }}>
               {title}
             </HandoverBlock>
-            <HandoverBlock stateKey={key} index={2} reduced={reduced} style={{ alignItems: "center" }}>
+            <HandoverBlock stateKey={key === "error" ? `${meetingKey}:error` : meetingKey} index={2} reduced={reduced} style={{ alignItems: "center" }}>
               {detail}
             </HandoverBlock>
           </View>
-          <HandoverBlock stateKey={key} index={3} reduced={reduced} style={{ minHeight: s(size.primaryButtonH), alignItems: "center" }}>
-            <ActionBlock state={key} meeting={model.meeting} busy={busy} reduced={reduced} onJoin={onJoin} onRetry={onRetryJoin} onCancel={onCancelJoin} />
+          <HandoverBlock stateKey={meetingKey} index={3} reduced={reduced} style={{ minHeight: s(size.primaryButtonH), alignItems: "center" }}>
+            <ActionArea
+              state={key}
+              meeting={model.meeting}
+              busy={busy}
+              reduced={reduced}
+              onJoin={onJoin}
+              onRetry={onRetryJoin}
+              onCancel={onCancelJoin}
+              onPulse={handlePulse}
+            />
           </HandoverBlock>
         </View>
 
-        <HandoverBlock stateKey={key} index={4} reduced={reduced} style={[styles.footer, { minHeight: s(64) }]}>
+        <HandoverBlock stateKey={group} index={4} reduced={reduced} style={[styles.footer, { minHeight: s(64) }]}>
           {footer}
         </HandoverBlock>
 
@@ -156,8 +183,13 @@ export function DeepSpaceLayout({
   );
 }
 
+function groupOf(state: ScreenState): "idle" | "meeting" | "offline" {
+  if (state === "idle" || state === "offline") return state;
+  return "meeting";
+}
+
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root: { flex: 1, overflow: "hidden" },
   main: { flex: 1, alignItems: "center", justifyContent: "center" },
   footer: { flexDirection: "row", alignItems: "flex-end" },
 });

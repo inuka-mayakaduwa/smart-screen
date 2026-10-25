@@ -60,3 +60,40 @@ export const motion = {
   press: { duration: 160, scale: 0.96 },
   reduced: { fade: 200, spinnerPulse: 1600, rippleStillOpacity: 0.3 },
 } as const;
+
+/**
+ * Join → Joining transition ("D, calm pace"). Every duration, delay and curve for the
+ * status roll, button morph, sweep, Cancel and screen pulse lives here. Sizes are design units.
+ */
+export const joinMotion = {
+  easeOut: Easing.bezier(0.23, 1, 0.32, 1),
+  easeCalm: Easing.bezier(0.65, 0, 0.35, 1),
+  easeInOut: Easing.bezier(0.77, 0, 0.175, 1),
+  /** Press-in scale on the Join button, then the state switches. */
+  press: { duration: 140, scale: 0.96 },
+  switchDelay: 140,
+  /** The Join button and the Joining pill are one element. */
+  button: { w: 520, h: 88, radius: 16, background: 250, ring: 250, ringColor: "rgba(255,255,255,0.22)" },
+  /** Button label roll: snappy, it is the response to the tap. Travel is a fraction of the label height. */
+  label: { out: 180, inDelay: 60, in: 240, travel: 1.1 },
+  /** Progress sweep along the bottom edge of the pill. Positions are fractions of the bar's own width. */
+  sweep: { h: 3, widthRatio: 0.3, from: -1.1, to: 3.45, duration: 1400, radius: 3, color: "rgba(255,255,255,0.9)" },
+  cancel: { w: 144, h: 64, gap: 32, in: 200, inDelay: 120, out: 150, travel: 8 },
+  /** Status line roll at calm pace, plus the dot glide that keeps the pair centred. */
+  status: { out: 320, inDelay: 120, in: 480, travel: 1.1, glide: 600, dot: 400 },
+  spark: { size: 16, duration: 420, keyframes: [0, 0.25, 1], scale: [0.6, 1, 3], opacity: [0, 0.9, 0] },
+  wave: {
+    duration: 1400,
+    delay: 60,
+    keyframes: [0, 0.45, 1],
+    scale: [0.01, 0.6, 1],
+    opacity: [1, 0.8, 0],
+    stops: [
+      { offset: 0, opacity: 0 },
+      { offset: 0.8, opacity: 0 },
+      { offset: 0.94, opacity: 0.16 },
+      { offset: 1, opacity: 0 },
+    ],
+  },
+  reduced: { crossfade: 200, sweepPulse: 1600, sweepMin: 0.4, glide: 200 },
+} as const;

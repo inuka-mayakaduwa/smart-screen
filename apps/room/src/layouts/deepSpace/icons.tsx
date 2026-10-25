@@ -1,4 +1,4 @@
-import Svg, { Circle, Path, Rect } from "react-native-svg";
+import Svg, { Path, Rect } from "react-native-svg";
 
 export function MonitorIcon({ size, color }: { size: number; color: string }) {
   return (
@@ -23,16 +23,6 @@ export function RetryIcon({ size, color }: { size: number; color: string }) {
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path d="M21 12a9 9 0 1 1-2.6-6.4" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
       <Path d="M21 4v5h-5" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-    </Svg>
-  );
-}
-
-/** Track plus a quarter arc. Rotate the wrapper to spin it. */
-export function SpinnerArc({ size }: { size: number }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-      <Circle cx={16} cy={16} r={12} fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth={3} />
-      <Path d="M16 4a12 12 0 0 1 12 12" stroke="#FFFFFF" strokeWidth={3} strokeLinecap="round" />
     </Svg>
   );
 }
