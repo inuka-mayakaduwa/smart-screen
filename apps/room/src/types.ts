@@ -48,6 +48,8 @@ export type DisplayRoom = {
   timezone: string;
   meta: Record<string, string>;
   brandName: string | null;
+  /** IT contact shown on the offline screen. */
+  supportContact?: string | null;
   logoUrl: string | null;
   backgroundUrl: string | null;
   backgroundKind: RoomBackgroundKind;
@@ -63,6 +65,8 @@ export type DisplayState = {
   meetings: Meeting[];
   sources: { provider: string; accountLabel: string; status: string; error?: string }[];
   share: RoomShare;
+  /** Share site host, for example meet.govtech.lk, for the idle screen before a code exists. */
+  shareHost?: string;
   display: PanelDisplaySettings;
 };
 

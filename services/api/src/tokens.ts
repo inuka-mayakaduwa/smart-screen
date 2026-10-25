@@ -34,10 +34,20 @@ export function normalizeConnectCode(input: string): string {
   return input.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
 }
 
-/** Five-digit room share code (100k space), shown as digits only: 12345. */
+export const SHARE_CODE_LENGTH = 6;
+
+/**
+ * Six-character room share code shown as two halves on the panel (4NQ WRV).
+ * Uses the connect-code alphabet (A to Z and 2 to 9, no I, O, 0 or 1).
+ * Must stay shorter than the 8-character whiteboard code: nginx routes by length.
+ */
 export function createShareCode(): string {
-  const value = randomBytes(3).readUIntBE(0, 3) % 100_000;
-  return String(value).padStart(5, "0");
+  const bytes = randomBytes(SHARE_CODE_LENGTH);
+  let code = "";
+  for (let i = 0; i < SHARE_CODE_LENGTH; i += 1) {
+    code += TOKEN_ALPHABET[bytes[i]! % TOKEN_ALPHABET.length];
+  }
+  return code;
 }
 
 export function formatShareCode(code: string): string {
@@ -45,8 +55,7 @@ export function formatShareCode(code: string): string {
 }
 
 export function normalizeShareCode(input: string): string {
-  const digits = input.replace(/\D/g, "");
-  return digits.length >= 5 ? digits.slice(0, 5) : digits;
+  return input.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, SHARE_CODE_LENGTH);
 }
 
 export function createDeviceToken(): string {

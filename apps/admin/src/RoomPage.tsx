@@ -81,6 +81,7 @@ function ProfileForm({
 }) {
   const [name, setName] = useState(room.name);
   const [timezone, setTimezone] = useState(room.timezone);
+  const [supportContact, setSupportContact] = useState(room.supportContact ?? "");
   const [rows, setRows] = useState<{ key: string; value: string }[]>(
     Object.entries(room.meta).map(([key, value]) => ({ key, value })),
   );
@@ -88,6 +89,7 @@ function ProfileForm({
   useEffect(() => {
     setName(room.name);
     setTimezone(room.timezone);
+    setSupportContact(room.supportContact ?? "");
     setRows(Object.entries(room.meta).map(([key, value]) => ({ key, value })));
   }, [room]);
 
@@ -98,7 +100,10 @@ function ProfileForm({
       if (row.key.trim()) meta[row.key.trim()] = row.value;
     }
     try {
-      await api(`/api/admin/rooms/${room.id}`, { method: "PATCH", body: { name, timezone, meta } });
+      await api(`/api/admin/rooms/${room.id}`, {
+        method: "PATCH",
+        body: { name, timezone, meta, supportContact: supportContact.trim() || null },
+      });
       await onSaved();
     } catch (err) {
       onError(err instanceof Error ? err.message : "Could not save the room");
@@ -116,6 +121,16 @@ function ProfileForm({
         Timezone
         <input value={timezone} onChange={(event) => setTimezone(event.target.value)} required />
       </label>
+      <label>
+        IT support contact
+        <input
+          value={supportContact}
+          maxLength={80}
+          placeholder="ext. 2200"
+          onChange={(event) => setSupportContact(event.target.value)}
+        />
+      </label>
+      <p className="muted">Shown on the panel when the room loses its network connection.</p>
       <div className="stack">
         {rows.map((row, index) => (
           <div className="meta-row" key={index}>

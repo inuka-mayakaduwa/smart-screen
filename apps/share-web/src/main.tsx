@@ -61,8 +61,8 @@ function App() {
   async function share(event: FormEvent) {
     event.preventDefault();
     const roomCode = normalize(code);
-    if (roomCode.length < 5) {
-      setStatus("Enter the 5-digit code on the panel.");
+    if (roomCode.length < 6) {
+      setStatus("Enter the 6-character code on the panel.");
       return;
     }
     const url = new URL(window.location.href);
@@ -186,8 +186,12 @@ function App() {
               <input
                 value={code}
                 onChange={(event) => setCode(normalize(event.target.value))}
-                inputMode="numeric"
+                inputMode="text"
+                autoCapitalize="characters"
                 autoComplete="one-time-code"
+                spellCheck={false}
+                maxLength={6}
+                placeholder="4NQWRV"
                 disabled={starting}
               />
             </label>
@@ -1095,7 +1099,7 @@ function reservedPath(segment: string) {
 }
 
 function normalize(value: string) {
-  return value.replace(/\D/g, "").slice(0, 5);
+  return value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, 6);
 }
 
 function formatShareCode(code: string) {

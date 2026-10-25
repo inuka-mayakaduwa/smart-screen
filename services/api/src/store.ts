@@ -107,6 +107,8 @@ function normalizeRoomRecord(room: Room): Room {
   return {
     ...record,
     brandName: typeof record.brandName === "string" && record.brandName.trim() ? record.brandName.trim() : null,
+    supportContact:
+      typeof record.supportContact === "string" && record.supportContact.trim() ? record.supportContact.trim() : null,
     logoImageId: typeof record.logoImageId === "string" && record.logoImageId ? record.logoImageId : null,
     backgroundKind: record.backgroundImageId ? "image" : kind,
     backgroundSolid: typeof record.backgroundSolid === "string" ? record.backgroundSolid : "#14221c",

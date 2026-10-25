@@ -15,12 +15,13 @@ test("connect codes ignore spaces and dashes", () => {
   assert.equal(formatConnectCode("ABCDEFGH"), "ABCD-EFGH");
 });
 
-test("share codes are five digits without dashes", () => {
+test("share codes are six characters from the connect alphabet", () => {
   const code = createShareCode();
-  assert.match(code, /^\d{5}$/);
+  assert.match(code, /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/);
   assert.equal(formatShareCode(code), code);
-  assert.equal(formatShareCode("12-345"), "12345");
-  assert.equal(normalizeShareCode("12-345"), "12345");
+  assert.equal(formatShareCode("4nq wrv"), "4NQWRV");
+  assert.equal(normalizeShareCode("4NQ-WRV"), "4NQWRV");
+  assert.equal(normalizeShareCode("4NQWRVXYZ"), "4NQWRV");
 });
 
 test("secret comparison uses the stored hash", () => {

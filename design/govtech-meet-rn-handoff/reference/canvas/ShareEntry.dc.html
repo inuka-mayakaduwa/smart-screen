@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Share your screen to a room</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; min-height: 100vh; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; background: radial-gradient(ellipse 80% 55% at 50% 115%, #0A55DB 0%, #0839A4 40%, rgba(8,57,164,0) 80%), linear-gradient(180deg, #0C0D49 0%, #0C0D49 40%, #0A2276 100%); color: #FFFFFF; font-family: 'Helvetica Now Display', 'Helvetica Neue', Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased">
+
+  <header style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding-block: 28px; padding-inline: max(20px, 4vw)">
+    <img src="/_blob/61866d310fc8a826a6eb220718a9fe56" alt="GovTech Sri Lanka" style="display: block; height: 32px; width: auto">
+    <a href="#help" style="color: rgba(255,255,255,0.88); font-size: 16px; text-decoration: underline; text-underline-offset: 4px">Help with sharing</a>
+  </header>
+
+  <main style="flex: 1; display: flex; align-items: center; justify-content: center; padding-block: 24px 64px; padding-inline: max(20px, 4vw)">
+
+    <sc-if value="{{ notSharing }}" hint-placeholder-val="{{ true }}">
+      <form onSubmit="{{ submit }}" style="width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 40px">
+        <div style="display: flex; flex-direction: column; gap: 14px; text-align: center">
+          <h1 style="margin: 0; font-size: clamp(32px, 4.5vw, 48px); font-weight: 700; line-height: 1.08; letter-spacing: -0.03em; text-wrap: balance">Share your screen to a room</h1>
+          <p style="margin: 0; font-size: 18px; line-height: 1.5; color: rgba(255,255,255,0.85); text-wrap: pretty">Enter the 6-character code shown on the meeting room screen.</p>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 14px">
+          <label for="room-code" style="font-size: 15px; font-weight: 600; color: rgba(255,255,255,0.92)">Room code</label>
+          <div style="position: relative">
+            <div aria-hidden="true" style="display: flex; align-items: center; gap: 10px">
+              <sc-for list="{{ boxesA }}" as="b" hint-placeholder-count="3">
+                <span style="flex: 1 1 0; min-width: 0; height: 84px; display: flex; align-items: center; justify-content: center; border-radius: 16px; background: rgba(255,255,255,0.07); box-shadow: {{b.ring}}; font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; color: #FFFFFF">{{b.ch}}</span>
+              </sc-for>
+              <span style="flex: none; width: 14px; height: 2px; border-radius: 2px; background: rgba(255,255,255,0.35)"></span>
+              <sc-for list="{{ boxesB }}" as="b" hint-placeholder-count="3">
+                <span style="flex: 1 1 0; min-width: 0; height: 84px; display: flex; align-items: center; justify-content: center; border-radius: 16px; background: rgba(255,255,255,0.07); box-shadow: {{b.ring}}; font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; color: #FFFFFF">{{b.ch}}</span>
+              </sc-for>
+            </div>
+            <input id="room-code" name="room-code" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="6" value="{{ code }}" onChange="{{ onType }}" onFocus="{{ onFocus }}" onBlur="{{ onBlur }}" aria-describedby="code-help" aria-invalid="{{ invalid }}" style="position: absolute; inset: 0; width: 100%; height: 100%; box-sizing: border-box; opacity: 0; border: 0; font-size: 16px; cursor: text">
+          </div>
+          <sc-if value="{{ isError }}" hint-placeholder-val="{{ false }}">
+            <p id="code-help" role="alert" style="margin: 0; display: flex; align-items: flex-start; gap: 10px; font-size: 16px; line-height: 1.45; color: #FFB4AB">
+              <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 1px"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16.5v.01"></path></svg>
+              <span>No room uses the code <b style="color: #FFFFFF; letter-spacing: 0.06em">{{ codeShown }}</b>. Check the code on the room screen and try again.</span>
+            </p>
+          </sc-if>
+          <sc-if value="{{ notError }}" hint-placeholder-val="{{ true }}">
+            <p id="code-help" style="margin: 0; font-size: 16px; line-height: 1.45; color: rgba(255,255,255,0.8)">Letters and numbers only, for example 4NQ WRV.</p>
+          </sc-if>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 16px">
+          <button type="submit" disabled="{{ submitDisabled }}" style="height: 64px; width: 100%; border: 0; border-radius: 16px; background: {{btnBg}}; color: {{btnFg}}; font-family: inherit; font-size: 20px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 12px; cursor: {{btnCursor}}">
+            <sc-if value="{{ isConnecting }}" hint-placeholder-val="{{ false }}">
+              <svg ref="{{ spinRef }}" aria-hidden="true" width="22" height="22" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="12" stroke="rgba(12,13,73,0.2)" stroke-width="3.5"></circle><path d="M16 4a12 12 0 0 1 12 12" stroke="#0C0D49" stroke-width="3.5" stroke-linecap="round"></path></svg>
+            </sc-if>
+            <span>{{ btnLabel }}</span>
+          </button>
+          <p style="margin: 0; display: flex; align-items: flex-start; gap: 10px; font-size: 15px; line-height: 1.5; color: rgba(255,255,255,0.8)">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 2px"><rect x="4" y="10" width="16" height="11" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
+            <span>Your browser will ask which screen, window or tab to share. Only this room sees it, and you can stop at any time.</span>
+          </p>
+        </div>
+      </form>
+    </sc-if>
+
+    <sc-if value="{{ isSharing }}" hint-placeholder-val="{{ false }}">
+      <section aria-labelledby="sharing-title" style="width: 100%; max-width: 560px; display: flex; flex-direction: column; align-items: center; gap: 40px; text-align: center">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 18px">
+          <div role="status" style="display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 500; color: rgba(255,255,255,0.9)">
+            <span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 999px; background: #FF6B5E"></span>
+            <span>Sharing for 2 min</span>
+          </div>
+          <h1 id="sharing-title" style="margin: 0; font-size: clamp(32px, 4.5vw, 48px); font-weight: 700; line-height: 1.08; letter-spacing: -0.03em; text-wrap: balance">You're sharing to {{ roomName }}</h1>
+          <p style="margin: 0; font-size: 18px; line-height: 1.5; color: rgba(255,255,255,0.85)">Everyone in the room can see your screen. Close or minimise this tab without stopping the share.</p>
+        </div>
+        <div style="width: 100%; display: flex; align-items: center; gap: 16px; box-sizing: border-box; padding: 16px 20px; border-radius: 20px; background: rgba(255,255,255,0.07); box-shadow: inset 0 1px 0 rgba(255,255,255,0.35), inset 0 0 0 1px rgba(255,255,255,0.16); text-align: left">
+          <svg aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex: none"><rect x="2.5" y="4" width="19" height="13" rx="2"></rect><path d="M8 21h8M12 17v4"></path></svg>
+          <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+            <span style="font-size: 17px; font-weight: 600; overflow-wrap: anywhere">{{ roomName }}</span>
+            <span style="font-size: 15px; color: rgba(255,255,255,0.8)">Room code {{ codeShown }}</span>
+          </div>
+        </div>
+        <button type="button" onClick="{{ stop }}" style="height: 64px; width: 100%; border: 0; border-radius: 16px; background: #FFFFFF; color: #B42318; font-family: inherit; font-size: 20px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 12px; cursor: pointer">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
+          <span>Stop sharing</span>
+        </button>
+      </section>
+    </sc-if>
+  </main>
+
+  <footer id="help" style="padding-block: 24px 32px; padding-inline: max(20px, 4vw); font-size: 14px; color: rgba(255,255,255,0.75); text-align: center">Can't find the code? It's shown on the room screen, in the bottom-left corner or in the middle when the room is free.</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"screen":{"editor":"enum","options":["enter","error","sharing"],"default":"enter","section":"State"},"startCode":{"editor":"text","default":"","section":"State"},"roomCode":{"editor":"text","default":"4NQWRV","section":"Room"},"roomName":{"editor":"text","default":"Conference Room 2","section":"Room"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    var s = props.screen ?? 'enter';
+    this.state = { phase: s, code: (props.startCode ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6), focused: false };
+    var self = this;
+    this.onType = function (e) {
+      var v = (e.target.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+      self.setState({ code: v, phase: self.state.phase === 'error' ? 'enter' : self.state.phase });
+    };
+    this.onFocus = function () { self.setState({ focused: true }); };
+    this.onBlur = function () { self.setState({ focused: false }); };
+    this.submit = function (e) {
+      if (e && e.preventDefault) e.preventDefault();
+      if (self.state.code.length < 6 || self.state.phase === 'connecting') return;
+      var target = (self.props.roomCode ?? '4NQWRV').toUpperCase();
+      if (self.state.code !== target) { self.setState({ phase: 'error' }); return; }
+      self.setState({ phase: 'connecting' });
+      self.timer = setTimeout(function () { self.setState({ phase: 'sharing' }); }, 1400);
+    };
+    this.stop = function () { self.setState({ phase: 'enter', code: '' }); };
+    this.spinRef = function (el) {
+      if (!el || el === self.spinEl || typeof el.animate !== 'function') return;
+      self.spinEl = el;
+      var calm = false;
+      try { calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (err) {}
+      if (calm) el.animate([{ opacity: 0.4 }, { opacity: 1 }], { duration: 1600, direction: 'alternate', iterations: Infinity, easing: 'ease-in-out' });
+      else el.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }], { duration: 1000, easing: 'linear', iterations: Infinity });
+    };
+  }
+
+  componentWillUnmount() { clearTimeout(this.timer); }
+
+  renderVals() {
+    var st = this.state;
+    var code = st.code;
+    var isError = st.phase === 'error';
+    var ready = code.length === 6;
+    var boxes = [0, 1, 2, 3, 4, 5].map(function (i) {
+      var active = st.focused && (i === Math.min(code.length, 5));
+      var ring = isError ? 'inset 0 0 0 2px #FF8A80'
+        : active ? 'inset 0 0 0 2px #FFFFFF, 0 0 0 4px rgba(255,255,255,0.18)'
+        : (code[i] ? 'inset 0 0 0 1px rgba(255,255,255,0.40)' : 'inset 0 0 0 1px rgba(255,255,255,0.18)');
+      return { ch: code[i] || '', ring: ring };
+    });
+    var shown = code.length > 3 ? code.slice(0, 3) + ' ' + code.slice(3) : code;
+    return {
+      code: code,
+      codeShown: shown || '4NQ WRV',
+      boxesA: boxes.slice(0, 3),
+      boxesB: boxes.slice(3),
+      onType: this.onType,
+      onFocus: this.onFocus,
+      onBlur: this.onBlur,
+      submit: this.submit,
+      stop: this.stop,
+      spinRef: this.spinRef,
+      roomName: this.props.roomName ?? 'Conference Room 2',
+      isError: isError,
+      notError: !isError,
+      invalid: isError ? 'true' : 'false',
+      isConnecting: st.phase === 'connecting',
+      isSharing: st.phase === 'sharing',
+      notSharing: st.phase !== 'sharing',
+      submitDisabled: !ready || st.phase === 'connecting',
+      btnBg: ready ? '#FFFFFF' : 'rgba(255,255,255,0.14)',
+      btnFg: ready ? '#0C0D49' : 'rgba(255,255,255,0.75)',
+      btnCursor: ready ? 'pointer' : 'not-allowed',
+      btnLabel: st.phase === 'connecting' ? 'Connecting to the room…' : 'Share screen'
+    };
+  }
+}
+</script>
+</body>
+</html>

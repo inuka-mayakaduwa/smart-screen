@@ -5,6 +5,7 @@ import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import { createShareSession } from "./api";
 import { debug, isDebugEnabled } from "./debugLog";
 import { lanAddress, lanIpInjection, receiverDocument } from "./receiverDocument";
+import { normalizeShareCode, shareHostPath } from "./shareCode";
 import type { PanelSession, ShareSession } from "./types";
 
 export function RoomCodeReceiver({
@@ -154,11 +155,9 @@ function CodeCard({ share, showing, expiring }: { share: ShareSession; showing: 
     <View style={showing ? styles.codeCard : styles.codeBlock} pointerEvents="none">
       {expiring && !showing ? <Text style={styles.url}>Rotating</Text> : null}
       <Animated.Text style={[showing ? styles.codeSmall : styles.code, expiring && { opacity: fade }]}>
-        {share.code.replace(/\D/g, "").slice(0, 5)}
+        {normalizeShareCode(share.code) || "······"}
       </Animated.Text>
-      <Text style={showing ? styles.urlSmall : styles.url}>
-        {share.shareUrl.replace(/\/(\d{2})-(\d{3})(?=\/?$)/, "/$1$2").replace(/^https?:\/\//, "")}
-      </Text>
+      <Text style={showing ? styles.urlSmall : styles.url}>{shareHostPath(share.shareUrl, share.code)}</Text>
       {showing ? null : <Image source={{ uri: share.qrDataUrl }} style={styles.qr} />}
     </View>
   );
