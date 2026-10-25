@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "Smart Room",
+    "slug": "smart-room",
+    "version": "dev-1.0.5",
+    "orientation": "landscape",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "plugins": [
+      "expo-dev-client",
+      "expo-secure-store",
+      "expo-file-system",
+      "./plugins/withPanelQueries",
+      "./plugins/withAndroidStlLink"
+    ],
+    "android": {
+      "package": "com.smartscreen.room",
+      "versionCode": 5,
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.INTERNET"
+      ]
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.smartscreen.room"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "3ed5933a-c0cf-4896-90c4-7a6eb6acf556"
+      }
+    }
+  }
+}
