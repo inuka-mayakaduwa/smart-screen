@@ -121,20 +121,27 @@ function SectionHead({ title, detail }: { title: string; detail: string }) {
 
 function ThemeThumb({ swatch, layout = "classic" }: { swatch: ThemeSwatch; layout?: "classic" | "deep-space" }) {
   if (layout === "deep-space") {
+    // Mirrors the GovTech Meet waiting screen: header row, centred status + code hero,
+    // glass share card bottom-left, tilted whiteboard tile bleeding off the bottom-right.
     return (
-      <span className="ds-thumb ds-thumb-space" style={{ background: `linear-gradient(180deg, ${swatch.screen}, #163a8a)` }} aria-hidden="true">
+      <span
+        className="ds-thumb ds-thumb-space"
+        style={{ background: `linear-gradient(180deg, ${swatch.screen} 0%, ${swatch.screen} 35%, ${swatch.featured} 100%)` }}
+        aria-hidden="true"
+      >
+        <span className="ds-thumb-space-glow" style={{ background: swatch.accent }} />
         <span className="ds-thumb-space-top">
           <i style={{ background: swatch.text }} />
           <i style={{ background: swatch.muted }} />
         </span>
         <span className="ds-thumb-space-hero">
-          <i style={{ background: swatch.accent }} />
+          <i style={{ background: "#4ADE80" }} />
           <i style={{ background: swatch.text }} />
-          <i style={{ background: swatch.muted, width: "70%" }} />
+          <i style={{ background: swatch.muted, width: "46%" }} />
         </span>
         <span className="ds-thumb-space-foot">
-          <i style={{ background: swatch.card }} />
-          <i style={{ background: swatch.joinBackground }} />
+          <i className="ds-thumb-space-card" style={{ background: swatch.card }} />
+          <i className="ds-thumb-space-tile" style={{ background: "#F1F1F4" }} />
         </span>
       </span>
     );

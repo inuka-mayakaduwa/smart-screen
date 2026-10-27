@@ -66,16 +66,16 @@ export const PANEL_THEMES: PanelThemeInfo[] = [
   {
     id: "deep-space",
     label: "Deep Space",
-    description: "Centered share hero, brand header, next booking + whiteboard card.",
+    description: "GovTech Meet waiting screen. Navy gradient, centred share code, glass share card, whiteboard tile.",
     swatch: {
-      screen: "#050816",
-      card: "rgba(18,36,78,0.55)",
-      featured: "rgba(28,58,120,0.85)",
+      screen: "#0C0D49",
+      card: "rgba(255,255,255,0.07)",
+      featured: "#0A2276",
       text: "#ffffff",
-      muted: "rgba(255,255,255,0.78)",
-      accent: "#5ee0a0",
+      muted: "rgba(255,255,255,0.80)",
+      accent: "#054BC9",
       joinBackground: "#ffffff",
-      joinText: "#0b1c4a",
+      joinText: "#0C0D49",
     },
   },
 ];

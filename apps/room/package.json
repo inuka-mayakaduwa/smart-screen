@@ -3,6 +3,7 @@
   "version": "1.0.5",
   "main": "index.ts",
   "dependencies": {
+    "@expo/metro-runtime": "~57.0.17",
     "@expo/vector-icons": "^15.1.1",
     "expo": "~57.0.28",
     "expo-constants": "~57.0.21",
@@ -17,7 +18,10 @@
     "expo-secure-store": "~57.0.4",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
+    "react-dom": "19.2.3",
     "react-native": "0.86.3",
+    "react-native-svg": "15.15.4",
+    "react-native-web": "^0.21.2",
     "react-native-webview": "13.16.1"
   },
   "devDependencies": {

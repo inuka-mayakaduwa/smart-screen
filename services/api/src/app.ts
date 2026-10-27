@@ -234,6 +234,7 @@ export function createApp(store: Store, config: Config): AppContext {
         timezone,
         meta,
         brandName: null,
+        supportContact: null,
         logoImageId: null,
         backgroundImageId: null,
         backgroundKind: "gradient",
@@ -272,6 +273,10 @@ export function createApp(store: Store, config: Config): AppContext {
         if (req.body?.brandName !== undefined) {
           if (req.body.brandName === null || req.body.brandName === "") room.brandName = null;
           else room.brandName = stringField(req.body.brandName, "Brand name").slice(0, 80);
+        }
+        if (req.body?.supportContact !== undefined) {
+          if (req.body.supportContact === null || req.body.supportContact === "") room.supportContact = null;
+          else room.supportContact = stringField(req.body.supportContact, "Support contact").slice(0, 80);
         }
         if (req.body?.status !== undefined) {
           if (req.body.status !== "active" && req.body.status !== "retired") {
@@ -563,6 +568,7 @@ export function createApp(store: Store, config: Config): AppContext {
         meetings,
         sources,
         share: normalizeShare(currentRoom.share),
+        shareHost: shareHost(config.shareWebOrigin),
         display,
       });
     }),
@@ -938,6 +944,7 @@ function presentAdminRoom(data: ReturnType<Store["read"]>, room: Room, base: str
     timezone: room.timezone,
     meta: room.meta,
     brandName: room.brandName,
+    supportContact: room.supportContact,
     logoImageId: logoOk ? room.logoImageId : null,
     logoUrl: logoOk ? mediaUrl(base, room.logoImageId!) : null,
     status: room.status,
@@ -1005,6 +1012,7 @@ function presentDisplayRoom(data: ReturnType<Store["read"]>, room: Room, base: s
     timezone: room.timezone,
     meta: room.meta,
     brandName: room.brandName,
+    supportContact: room.supportContact,
     logoUrl: logoOk ? mediaUrl(base, room.logoImageId!) : null,
     backgroundUrl: normalized.backgroundImageId ? mediaUrl(base, normalized.backgroundImageId) : null,
     backgroundKind: normalized.backgroundKind,
@@ -1047,6 +1055,16 @@ function consumeState(store: Store, id: string) {
   store.update((data) => {
     data.oauthStates = data.oauthStates.filter((item) => item.id !== id);
   });
+}
+
+/** Host shown on the panel before a code is minted, for example meet.govtech.lk. */
+function shareHost(origin: string) {
+  try {
+    const url = new URL(origin);
+    return url.port ? `${url.hostname}:${url.port}` : url.hostname;
+  } catch {
+    return origin.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  }
 }
 
 function joinCodeUrl(origin: string, code: string) {

@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>GovTech Meet waiting screen, all states</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; width: 1920px; height: 1080px; box-sizing: border-box; padding-block: 56px 64px; padding-inline: 80px; display: flex; flex-direction: column; overflow: hidden; background: radial-gradient(ellipse 70% 60% at 50% 112%, #0A55DB 0%, #0839A4 40%, rgba(8,57,164,0) 80%), linear-gradient(180deg, #0C0D49 0%, #0C0D49 35%, #0A2276 100%); color: #FFFFFF; font-family: 'Helvetica Now Display', 'Helvetica Neue', Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased">
+
+  <header style="position: relative; display: flex; align-items: center; justify-content: space-between; gap: 32px; font-size: 24px">
+    <img src="/_blob/61866d310fc8a826a6eb220718a9fe56" alt="GovTech Sri Lanka" style="display: block; height: 44px; width: auto">
+    <div style="display: flex; align-items: center; gap: 24px; color: rgba(255,255,255,0.8)">
+      <span>{{roomName}}</span>
+      <span style="color: #FFFFFF; font-weight: 600; font-variant-numeric: tabular-nums">{{clock}}</span>
+    </div>
+  </header>
+
+  <main style="position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 56px; text-align: center">
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 24px; max-width: 1240px">
+      <div role="status" style="display: flex; align-items: center; gap: 12px; font-size: 26px; font-weight: 500; color: rgba(255,255,255,0.88)">
+        <span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 999px; background: {{dot}}"></span>
+        <span>{{statusText}}</span>
+      </div>
+
+      <sc-if value="{{ showMeeting }}" hint-placeholder-val="{{ true }}">
+        <h1 style="margin: 0; font-size: 96px; font-weight: 700; line-height: 1.04; letter-spacing: -0.03em; text-wrap: balance">Quarterly digital services review</h1>
+        <p style="margin: 0; display: flex; flex-wrap: wrap; justify-content: center; column-gap: 20px; row-gap: 8px; font-size: 30px; color: rgba(255,255,255,0.8)">
+          <span style="color: #FFFFFF; font-weight: 600; font-variant-numeric: tabular-nums">10:00–11:00</span>
+          <span aria-hidden="true">·</span>
+          <span>Organised by Nadeesha Fernando</span>
+          <span aria-hidden="true">·</span>
+          <span>{{platformName}}</span>
+        </p>
+      </sc-if>
+
+      <sc-if value="{{ isIdle }}" hint-placeholder-val="{{ false }}">
+        <h1 style="margin: 0; font-size: 72px; font-weight: 700; line-height: 1.05; letter-spacing: -0.03em">Share your screen</h1>
+        <div aria-label="{{codeSpoken}}" style="display: flex; gap: 56px; font-size: 200px; font-weight: 700; line-height: 0.95; font-variant-numeric: tabular-nums">
+          <span aria-hidden="true" style="letter-spacing: 0.06em; margin-inline-end: -0.06em">{{codeA}}</span>
+          <span aria-hidden="true" style="letter-spacing: 0.06em; margin-inline-end: -0.06em">{{codeB}}</span>
+        </div>
+        <p style="margin: 0; font-size: 32px; color: rgba(255,255,255,0.88)">Go to <span style="color: #FFFFFF; font-weight: 600">{{shareUrl}}</span> on your laptop</p>
+      </sc-if>
+
+      <sc-if value="{{ isOffline }}" hint-placeholder-val="{{ false }}">
+        <h1 style="margin: 0; font-size: 88px; font-weight: 700; line-height: 1.05; letter-spacing: -0.03em">This screen is offline</h1>
+        <p style="margin: 0; max-width: 980px; font-size: 30px; line-height: 1.4; color: rgba(255,255,255,0.85); text-wrap: pretty">Joining and screen sharing will come back on their own when the network returns. If it's down for more than a few minutes, call IT support on [IT EXTENSION].</p>
+      </sc-if>
+
+      <sc-if value="{{ isError }}" hint-placeholder-val="{{ false }}">
+        <p style="margin: 0; max-width: 980px; font-size: 30px; line-height: 1.4; color: rgba(255,255,255,0.88); text-wrap: pretty">{{platformName}} didn't respond. Try again, or join from your laptop and share your screen with the code below.</p>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{ showJoin }}" hint-placeholder-val="{{ true }}">
+      <button type="button" style="height: 88px; padding-inline: 56px; border: 0; border-radius: 16px; background: #FFFFFF; color: #0C0D49; font-family: inherit; font-size: 28px; font-weight: 600; cursor: pointer">{{joinLabel}}</button>
+    </sc-if>
+
+    <sc-if value="{{ isJoining }}" hint-placeholder-val="{{ false }}">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 28px">
+        <div style="display: flex; align-items: center; gap: 16px; height: 88px; padding-inline: 40px; border-radius: 16px; background: rgba(255,255,255,0.10); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.18); font-size: 28px; font-weight: 600">
+          <svg aria-hidden="true" width="32" height="32" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="12" stroke="rgba(255,255,255,0.25)" stroke-width="3"></circle><path d="M16 4a12 12 0 0 1 12 12" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"></path></svg>
+          <span>Joining {{platformName}}…</span>
+        </div>
+        <button type="button" style="height: 64px; padding-inline: 32px; border: 0; border-radius: 14px; background: transparent; box-shadow: inset 0 0 0 2px rgba(255,255,255,0.35); color: #FFFFFF; font-family: inherit; font-size: 24px; font-weight: 600; cursor: pointer">Cancel</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isError }}" hint-placeholder-val="{{ false }}">
+      <button type="button" style="height: 88px; padding-inline: 56px; border: 0; border-radius: 16px; background: #FFFFFF; color: #0C0D49; font-family: inherit; font-size: 28px; font-weight: 600; display: flex; align-items: center; gap: 12px; cursor: pointer">
+        <svg aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"></path><path d="M21 4v5h-5"></path></svg>
+        <span>Try again</span>
+      </button>
+    </sc-if>
+  </main>
+
+  <footer style="position: relative; display: flex; align-items: flex-end; min-height: 64px">
+    <sc-if value="{{ showShareCard }}" hint-placeholder-val="{{ true }}">
+      <section aria-label="Share your screen" style="display: flex; flex-direction: column; padding: 12px; border-radius: 28px; background: rgba(255,255,255,0.07); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -1px 0 rgba(255,255,255,0.08), inset 0 0 0 1px rgba(255,255,255,0.18), 0 16px 40px rgba(6,10,58,0.30)">
+        <div style="display: flex; align-items: center; gap: 10px; padding-block: 10px 14px; padding-inline: 14px; font-size: 22px; color: rgba(255,255,255,0.92)">
+          <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="13" rx="2"></rect><path d="M8 21h8M12 17v4"></path></svg>
+          <span>Share your screen</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 14px; padding-block: 22px 24px; padding-inline: 28px; border-radius: 16px; background: rgba(255,255,255,0.03); box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), inset 0 0 0 1px rgba(255,255,255,0.12)">
+          <div aria-label="{{codeSpoken}}" style="display: flex; gap: 28px; font-size: 72px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums">
+            <span aria-hidden="true" style="letter-spacing: 0.08em; margin-inline-end: -0.08em">{{codeA}}</span>
+            <span aria-hidden="true" style="letter-spacing: 0.08em; margin-inline-end: -0.08em">{{codeB}}</span>
+          </div>
+          <div style="font-size: 22px; color: rgba(255,255,255,0.9)">Go to <span style="color: #FFFFFF; font-weight: 600">{{shareUrl}}</span></div>
+        </div>
+      </section>
+    </sc-if>
+    <sc-if value="{{ isIdle }}" hint-placeholder-val="{{ false }}">
+      <div style="display: flex; flex-direction: column; gap: 6px; font-size: 22px; color: rgba(255,255,255,0.85)">
+        <span>Next booking</span>
+        <span style="font-size: 28px; font-weight: 600; color: #FFFFFF">Tomorrow at 09:30, Weekly team stand-up</span>
+      </div>
+    </sc-if>
+  </footer>
+
+  <button type="button" aria-label="Open whiteboard" style="position: absolute; inset-inline-end: -56px; inset-block-end: -84px; width: 500px; height: 340px; box-sizing: border-box; padding: 0; border: 10px solid #FFFFFF; border-radius: 40px; background: #F1F1F4; transform: rotate(-7deg); transform-origin: 100% 100%; overflow: hidden; cursor: pointer; font-family: inherit; text-align: start; box-shadow: 0 2px 6px rgba(6,10,58,0.30), 0 24px 60px rgba(6,10,58,0.50)">
+    <span aria-hidden="true" style="position: absolute; inset: 0; background-image: radial-gradient(rgba(12,13,73,0.14) 1.5px, transparent 1.5px); background-size: 22px 22px"></span>
+    <svg aria-hidden="true" width="480" height="320" viewBox="0 0 480 320" fill="none" style="position: absolute; inset: 0">
+      <rect x="44" y="118" width="130" height="96" rx="12" fill="#FFFFFF" stroke="#D5D5DB" stroke-width="2"></rect>
+      <path d="M64 146h84M64 166h64M64 186h76" stroke="#B9B9C2" stroke-width="6" stroke-linecap="round"></path>
+      <path d="M190 166c40-4 62-22 96-20" stroke="#054BC9" stroke-width="4" stroke-linecap="round"></path>
+      <path d="m276 136 12 10-14 8" stroke="#054BC9" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></path>
+      <circle cx="350" cy="150" r="40" stroke="#0C0D49" stroke-width="4"></circle>
+      <path d="M90 250c26-18 46 14 72-4s40 10 64-6" stroke="#0C0D49" stroke-width="4" stroke-linecap="round"></path>
+    </svg>
+    <span style="position: absolute; inset-inline-start: 28px; inset-block-start: 26px; display: flex; align-items: center; gap: 14px; padding-block: 12px; padding-inline: 14px 20px; border-radius: 16px; background: #0C0D49; color: #FFFFFF; font-size: 26px; font-weight: 600">
+      <span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 10px; background: #FFFFFF; color: #0C0D49; display: flex; align-items: center; justify-content: center">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.4 3.6a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
+      </span>
+      <span>Open whiteboard</span>
+    </span>
+  </button>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"screen":{"editor":"enum","options":["idle","upcoming","starting","live","joining","error","offline"],"default":"upcoming","section":"State"},"platform":{"editor":"enum","options":["meet","teams"],"default":"meet","section":"State"},"roomName":{"editor":"text","default":"Conference Room 2","section":"Room"},"shareCode":{"editor":"text","default":"4NQWRV","section":"Room"},"$preview":{"width":1920,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const p = this.props;
+    const s = p.screen ?? 'upcoming';
+    const platformName = (p.platform ?? 'meet') === 'teams' ? 'Microsoft Teams' : 'Google Meet';
+    const roomName = p.roomName ?? 'Conference Room 2';
+    const code = (p.shareCode ?? '4NQWRV').toUpperCase().replace(/\s+/g, '');
+    const half = Math.ceil(code.length / 2);
+
+    const states = {
+      idle:     { status: 'This room is free',              dot: '#4ADE80', clock: '11:42' },
+      upcoming: { status: 'Next meeting, starts in 12 min', dot: '#FFFFFF', clock: '09:48' },
+      starting: { status: 'Starting now',                   dot: '#FBBF24', clock: '10:00' },
+      live:     { status: 'In progress, started 4 min ago', dot: '#FF6B5E', clock: '10:04' },
+      joining:  { status: 'Connecting this room',           dot: '#FFFFFF', clock: '10:04' },
+      error:    { status: 'Couldn’t join the meeting',  dot: '#FF6B5E', clock: '10:05' },
+      offline:  { status: 'No network connection',          dot: '#FBBF24', clock: '10:05' }
+    };
+    const st = states[s] || states.upcoming;
+
+    return {
+      roomName,
+      platformName,
+      clock: st.clock,
+      statusText: st.status,
+      dot: st.dot,
+      codeA: code.slice(0, half),
+      codeB: code.slice(half),
+      codeSpoken: 'Share code ' + code.split('').join(' '),
+      shareUrl: 'meet.govtech.lk/' + code,
+      joinLabel: s === 'upcoming' ? 'Join on ' + platformName : 'Join now on ' + platformName,
+      isIdle: s === 'idle',
+      isOffline: s === 'offline',
+      isError: s === 'error',
+      isJoining: s === 'joining',
+      showMeeting: ['upcoming', 'starting', 'live', 'joining', 'error'].indexOf(s) > -1,
+      showJoin: ['upcoming', 'starting', 'live'].indexOf(s) > -1,
+      showShareCard: ['upcoming', 'starting', 'live', 'joining', 'error'].indexOf(s) > -1
+    };
+  }
+}
+</script>
+</body>
+</html>

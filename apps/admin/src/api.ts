@@ -52,6 +52,7 @@ export type RoomDetail = {
   timezone: string;
   meta: Record<string, string>;
   brandName: string | null;
+  supportContact: string | null;
   logoImageId: string | null;
   logoUrl: string | null;
   status: "active" | "retired";

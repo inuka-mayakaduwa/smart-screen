@@ -27,13 +27,15 @@ import {
   type SessionSource,
 } from "./api";
 import { openMeeting } from "./launch";
-import { meetingHeadline, meetingSubtitle } from "./meetingPresentation";
+import { meetingHeadline, meetingSubtitle, providerLabel } from "./meetingPresentation";
 import { lanAddress, lanIpInjection, receiverDocument } from "./receiverDocument";
 import { DebugConsole } from "./DebugConsole";
 import { debug, getDebugLines, isDebugEnabled, setDebugEnabled } from "./debugLog";
 import { clearSession, saveDebugMode } from "./session";
 import { SettingsDialog, type ClockMode, type PictureSettings } from "./SettingsDialog";
-import { DeepSpaceLayout, deepSpaceStatusForMeeting, type DeepSpacePhase } from "./layouts/DeepSpaceLayout";
+import { DeepSpaceLayout } from "./layouts/DeepSpaceLayout";
+import { timing as deepSpaceTiming } from "./layouts/deepSpace/state";
+import { normalizeShareCode, shareHostPath } from "./shareCode";
 import { themeFor, type PanelTheme } from "./themes";
 import type { DisplayState, Meeting, MeetingSlotSettings, PanelDisplaySettings, PanelSession, ShareSession } from "./types";
 
@@ -84,6 +86,7 @@ export function HomeScreen({
   const [busy, setBusy] = useState(false);
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState("");
+  const [joinTarget, setJoinTarget] = useState<Meeting | null>(null);
   const [offline, setOffline] = useState(false);
   const showingShareRef = useRef(false);
   const holdRoom = useRef(false);
@@ -121,16 +124,24 @@ export function HomeScreen({
         postShareLan(session.controlApiUrl, session.deviceToken, address).catch(() => undefined);
       })
       .catch(() => undefined);
+    // Offline only after the network has been gone for a while (HANDOFF 5: 10 s), so a blip does not flash the screen.
+    let offlineSince: number | null = null;
+    const noteNetwork = (connected: boolean) => {
+      if (cancelled) return;
+      if (connected) {
+        offlineSince = null;
+        setOffline(false);
+        return;
+      }
+      offlineSince ??= Date.now();
+      if (Date.now() - offlineSince >= deepSpaceTiming.offlineAfterSec * 1000) setOffline(true);
+    };
     Network.getNetworkStateAsync()
-      .then((state) => {
-        if (!cancelled) setOffline(state.isConnected === false);
-      })
+      .then((state) => noteNetwork(state.isConnected !== false))
       .catch(() => undefined);
     const poll = setInterval(() => {
       Network.getNetworkStateAsync()
-        .then((state) => {
-          if (!cancelled) setOffline(state.isConnected === false);
-        })
+        .then((state) => noteNetwork(state.isConnected !== false))
         .catch(() => undefined);
     }, 5000);
     return () => {
@@ -143,6 +154,25 @@ export function HomeScreen({
     const clock = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(clock);
   }, []);
+
+  // Joining with no answer becomes the error state; the error clears on its own after a minute (HANDOFF 5).
+  useEffect(() => {
+    if (!joining) return;
+    const timer = setTimeout(() => {
+      setJoining(false);
+      setJoinError(`${providerLabel(joinTarget?.provider ?? "other")} didn’t respond`);
+    }, deepSpaceTiming.joinTimeoutSec * 1000);
+    return () => clearTimeout(timer);
+  }, [joining, joinTarget]);
+
+  useEffect(() => {
+    if (!joinError) return;
+    const timer = setTimeout(() => {
+      setJoinError("");
+      setJoinTarget(null);
+    }, deepSpaceTiming.errorIdleReturnSec * 1000);
+    return () => clearTimeout(timer);
+  }, [joinError]);
 
   const refreshSeconds = state?.display?.refreshSeconds ?? DEFAULT_DISPLAY.refreshSeconds;
   useEffect(() => {
@@ -360,6 +390,7 @@ export function HomeScreen({
 
   async function joinFromPanel(meeting: Meeting, joinNow = false) {
     setJoinError("");
+    setJoinTarget(meeting);
     try {
       await useSession("meeting");
     } catch (err) {
@@ -378,20 +409,16 @@ export function HomeScreen({
     onJoin(meeting, clockZone, display.themeId, { brandName: room?.brandName, logoUrl: room?.logoUrl });
   }
 
-  function deepSpacePhase(): DeepSpacePhase {
-    if (offline) return "offline";
-    if (joining) return "joining";
-    if (joinError && current) return "join-error";
-    if (current) return "meeting";
-    return "free";
+  function cancelJoin() {
+    setJoining(false);
+    setJoinError("");
+    setJoinTarget(null);
   }
 
-  function deepSpaceStatusLabel(phase: DeepSpacePhase) {
-    if (phase === "offline") return "No network connection";
-    if (phase === "joining") return "Connecting this room";
-    if (phase === "join-error") return "Couldn't join the meeting.";
-    if (phase === "meeting" && current) return deepSpaceStatusForMeeting(current, now);
-    return "This room is free";
+  /** Join from the waiting screen: straight into the app when the admin allows Join on the card, otherwise the join page. */
+  function joinFromWaitingScreen(meeting: Meeting) {
+    if (display.now.joinInCard && meeting.joinUrl) void joinFromPanel(meeting, true);
+    else void joinFromPanel(meeting);
   }
 
   function pushPicture(next: PictureSettings) {
@@ -450,8 +477,6 @@ export function HomeScreen({
 
   const splitLive = boarding && showingShare;
   const boardUri = activity ? whiteboardEmbedUrl(activity.whiteboardUrl, session.controlApiUrl) : "";
-  const spacePhase = deepSpacePhase();
-  const spaceStatus = deepSpaceStatusLabel(spacePhase);
 
   // Keep the share receiver mounted in room mode (and beside the board when live).
   // Hide it during whiteboard-only so a failed board load cannot show the black receiver.
@@ -580,19 +605,23 @@ export function HomeScreen({
               logoUrl={room?.logoUrl}
               roomName={room?.name ?? "Loading room"}
               clock={clock}
-              phase={spacePhase}
-              statusLabel={spaceStatus}
+              now={now}
+              timezone={clockZone}
+              meetings={meetings}
+              nowSlot={display.now}
+              nextSlot={display.next}
+              offline={offline}
+              joiningMeeting={joining ? joinTarget : null}
+              errorMeeting={joinError ? joinTarget : null}
+              joinErrorText={joinError}
               shareCode={share?.code}
               shareUrl={share?.shareUrl}
+              shareHost={state?.shareHost}
               showCode={showCode}
               showUrl={showUrl}
               shareNote={shareNote || error || connectNote}
-              current={current}
-              upcoming={upcoming}
-              nowSlot={display.now}
-              timezone={clockZone}
-              busy={busy || joining}
-              joinError={joinError}
+              supportContact={room?.supportContact}
+              busy={busy}
               sessionControl={
                 <EndSession
                   activity={activity}
@@ -607,15 +636,9 @@ export function HomeScreen({
                 />
               }
               onOpenBoard={openBoard}
-              onJoin={current ? () => joinFromPanel(current) : undefined}
-              onJoinNow={
-                current && display.now.joinInCard && current.joinUrl ? () => joinFromPanel(current, true) : undefined
-              }
-              onRetryJoin={current ? () => joinFromPanel(current, true) : undefined}
-              onCancelJoin={() => {
-                setJoining(false);
-                setJoinError("");
-              }}
+              onJoin={joinFromWaitingScreen}
+              onRetryJoin={(meeting) => void joinFromPanel(meeting, true)}
+              onCancelJoin={cancelJoin}
             />
           ) : (
             <>
@@ -873,14 +896,14 @@ function ShareCard({
   const labelStyle = [compact ? styles.chipLabel : styles.shareLabel, { color: panel.labelColor }];
   const codeStyle = [compact ? styles.chipCode : styles.shareCode, { color: panel.codeColor }];
   const urlStyle = [compact ? styles.chipUrl : styles.shareUrl, { color: panel.urlColor }];
-  const digits = code ? code.replace(/\D/g, "").slice(0, 5) : "";
-  const displayUrl = url ? shareLinkWithoutDashes(url, digits) : "";
+  const digits = normalizeShareCode(code);
+  const displayUrl = url ? shareHostPath(url, digits) : "";
   return (
     <View style={cardStyle}>
       {!showCode ? null : <Text style={labelStyle}>{expiring ? "Rotating" : compact ? "Code" : "Share code"}</Text>}
       {showCode || expiring ? (
         <Animated.Text style={[codeStyle, expiring && { opacity: fade }]}>
-          {digits || "·····"}
+          {digits || "······"}
         </Animated.Text>
       ) : null}
       {showUrl ? (
@@ -897,19 +920,8 @@ function ShareCard({
   );
 }
 
-function shareLinkWithoutDashes(url: string, digits?: string) {
-  try {
-    const parsed = new URL(url);
-    const code = (digits || parsed.pathname.replace(/\D/g, "")).slice(0, 5);
-    if (!code) return `${parsed.host}${parsed.pathname}`.replace(/\/$/, "");
-    return `${parsed.host}/${code}`;
-  } catch {
-    return url.replace(/^https?:\/\//, "").replace(/\/(\d{2})-(\d{3})\/?$/, "/$1$2");
-  }
-}
-
-/** Keep the session whiteboard path (8-char). Rewriting it to the 5-digit share code
- *  makes one-domain nginx serve share-web instead of the board. */
+/** Keep the session whiteboard path (8 characters). Rewriting it to the 6-character share
+ *  code makes one-domain nginx serve share-web instead of the board. */
 function whiteboardEmbedUrl(whiteboardUrl: string, controlApiUrl: string) {
   const next = new URL(whiteboardUrl);
   if (next.hostname === "localhost" || next.hostname === "127.0.0.1") {
@@ -948,17 +960,11 @@ function RoomBackdrop({
     );
   }
   if (preferThemeBackdrop) {
+    // The Deep Space layout paints its own gradient and breathing glow.
     return (
-      <LinearGradient
-        colors={[theme.gradientFrom!, theme.gradientTo!]}
-        style={styles.foreground}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-      >
-        <View style={[shellStyle, { backgroundColor: scrim }]} pointerEvents="box-none">
-          {children}
-        </View>
-      </LinearGradient>
+      <View style={styles.foreground} pointerEvents="box-none">
+        {children}
+      </View>
     );
   }
   if (room?.backgroundKind === "gradient") {

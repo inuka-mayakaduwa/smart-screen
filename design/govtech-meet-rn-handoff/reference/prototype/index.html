@@ -1,0 +1,371 @@
+<title>GovTech Meet Waiting Screen</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: a 16:9 room display scaled to fit, tweaks panel beside it (stacks under it on phones) */
+:root {
+  --bg: #EEF0F6;
+  --surface: #FFFFFF;
+  --fg: #0C0D49;
+  --muted: #4A4F6A;
+  --line: #D6DAE8;
+  --accent: #054BC9;
+  --accent-fg: #FFFFFF;
+  --chip: #E6ECFA;
+  --font: 'Helvetica Now Display', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #070923; --surface: #10133A; --fg: #EEF0FF; --muted: #AEB4D6; --line: #262A5E;
+    --accent: #6E97FF; --accent-fg: #070923; --chip: #1A1F55; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #070923; --surface: #10133A; --fg: #EEF0FF; --muted: #AEB4D6; --line: #262A5E;
+  --accent: #6E97FF; --accent-fg: #070923; --chip: #1A1F55; color-scheme: dark;
+}
+html, body { min-height: 100%; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font); -webkit-font-smoothing: antialiased;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 32px;
+}
+.top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; max-width: 1600px; margin: 0 auto 16px; }
+.top h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
+.top p { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
+.layout { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; max-width: 1600px; margin: 0 auto; }
+.stage-col { flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.stage { position: relative; width: 100%; aspect-ratio: 16 / 9; max-width: 100%; border-radius: 14px; overflow: hidden; background: #0C0D49; box-shadow: 0 0 0 1px var(--line), 0 12px 32px rgba(12,13,73,0.18); }
+.stage:fullscreen { border-radius: 0; box-shadow: none; display: flex; align-items: center; justify-content: center; }
+.stage-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; font-size: 13px; color: var(--muted); }
+.panel { flex: 1 1 300px; min-width: 0; max-width: 100%; background: var(--surface); border-radius: 14px; box-shadow: 0 0 0 1px var(--line); padding: 20px; display: flex; flex-direction: column; gap: 22px; }
+.panel h2 { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.group { display: flex; flex-direction: column; gap: 10px; border: 0; margin: 0; padding: 0; min-width: 0; }
+.group legend, .group > label { font-size: 14px; font-weight: 600; padding: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips input { position: absolute; opacity: 0; pointer-events: none; }
+.chips label { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-radius: 999px; background: var(--chip); color: var(--fg); font-size: 14px; cursor: pointer; transition: background-color 150ms ease, color 150ms ease; }
+.chips input:checked + label { background: var(--accent); color: var(--accent-fg); font-weight: 600; }
+.chips input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 2px; }
+.text-in { height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: inherit; font-size: 15px; width: 100%; box-sizing: border-box; }
+.text-in:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.switch input { width: 20px; height: 20px; accent-color: var(--accent); }
+.hint { margin: 0; font-size: 13px; line-height: 1.45; color: var(--muted); }
+.btn { height: 36px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- The room display (designed at 1920 x 1080, scaled to fit) ---------- */
+.screen { position: absolute; top: 0; left: 0; width: 1920px; height: 1080px; transform-origin: 0 0; overflow: hidden; color: #FFFFFF; font-family: var(--font); background: linear-gradient(180deg, #0C0D49 0%, #0C0D49 35%, #0A2276 100%); }
+.stage:fullscreen .screen { position: relative; flex: none; }
+.glow { position: absolute; inset: 0; background: radial-gradient(ellipse 70% 60% at 50% 112%, #0A55DB 0%, #0839A4 40%, rgba(8,57,164,0) 80%); transform-origin: 50% 100%; opacity: 0.85; animation: breathe 14s var(--ease-in-out) infinite alternate; }
+@keyframes breathe { from { transform: scale(1); opacity: 0.85; } to { transform: scale(1.06); opacity: 1; } }
+.content { position: absolute; inset: 0; box-sizing: border-box; padding: 56px 80px 64px; display: flex; flex-direction: column; transition: transform 2s var(--ease-in-out); }
+.s-head { display: flex; align-items: center; justify-content: space-between; gap: 32px; font-size: 24px; }
+.s-head img { display: block; height: 44px; width: auto; max-width: none; }
+.s-room { display: flex; align-items: center; gap: 24px; color: rgba(255,255,255,0.8); }
+.s-clock { color: #FFFFFF; font-weight: 600; font-variant-numeric: tabular-nums; }
+.s-main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 56px; text-align: center; }
+.s-stack { display: flex; flex-direction: column; align-items: center; gap: 24px; max-width: 1240px; }
+.blk { display: flex; flex-direction: column; align-items: center; gap: 24px; }
+.status { display: flex; align-items: center; gap: 12px; font-size: 26px; font-weight: 500; color: rgba(255,255,255,0.88); }
+.dot { position: relative; width: 12px; height: 12px; flex: none; }
+.dot i { position: absolute; inset: 0; border-radius: 999px; }
+.ripple { box-shadow: 0 0 0 2px currentColor; opacity: 0.3; animation: ripple 5.4s infinite; }
+@keyframes ripple { 0% { transform: scale(1); opacity: 0.5; animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1); } 44.4% { transform: scale(2.4); opacity: 0; } 100% { transform: scale(2.4); opacity: 0; } }
+.s-title { margin: 0; font-size: 96px; font-weight: 700; line-height: 1.04; letter-spacing: -0.03em; text-wrap: balance; }
+.s-title.mid { font-size: 72px; } .s-title.alt { font-size: 88px; }
+.s-meta { margin: 0; display: flex; flex-wrap: wrap; justify-content: center; column-gap: 20px; row-gap: 8px; font-size: 30px; color: rgba(255,255,255,0.8); }
+.s-meta b { color: #FFFFFF; font-weight: 600; font-variant-numeric: tabular-nums; }
+.s-body { margin: 0; max-width: 980px; font-size: 30px; line-height: 1.4; color: rgba(255,255,255,0.88); text-wrap: pretty; }
+.s-body b { color: #FFFFFF; font-weight: 600; }
+.code-xl { display: flex; gap: 56px; font-size: 200px; font-weight: 700; line-height: 0.95; font-variant-numeric: tabular-nums; }
+.code-xl span, .code-md span { letter-spacing: 0.06em; margin-right: -0.06em; }
+.s-btn { height: 88px; padding: 0 56px; border: 0; border-radius: 16px; background: #FFFFFF; color: #0C0D49; font: inherit; font-size: 28px; font-weight: 600; display: inline-flex; align-items: center; gap: 12px; cursor: pointer; transition: transform 160ms var(--ease-out); }
+.s-btn:active { transform: scale(0.96); }
+.s-btn:focus-visible, .tile:focus-visible { outline: 4px solid #FFFFFF; outline-offset: 6px; }
+.s-ghost { height: 64px; padding: 0 32px; border: 0; border-radius: 14px; background: transparent; box-shadow: inset 0 0 0 2px rgba(255,255,255,0.35); color: #FFFFFF; font: inherit; font-size: 24px; font-weight: 600; cursor: pointer; }
+.joining { display: flex; align-items: center; gap: 16px; height: 88px; padding: 0 40px; border-radius: 16px; background: rgba(255,255,255,0.10); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.18); font-size: 28px; font-weight: 600; }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.s-foot { display: flex; align-items: flex-end; min-height: 64px; }
+.share { display: flex; flex-direction: column; padding: 12px; border-radius: 28px; background: rgba(255,255,255,0.07); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -1px 0 rgba(255,255,255,0.08), inset 0 0 0 1px rgba(255,255,255,0.18), 0 16px 40px rgba(6,10,58,0.30); }
+.share-label { display: flex; align-items: center; gap: 10px; padding: 10px 14px 14px; font-size: 22px; color: rgba(255,255,255,0.92); }
+.share-well { display: flex; flex-direction: column; gap: 14px; padding: 22px 28px 24px; border-radius: 16px; background: rgba(255,255,255,0.03); box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), inset 0 0 0 1px rgba(255,255,255,0.12); }
+.code-md { display: flex; gap: 28px; font-size: 72px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.code-md span { letter-spacing: 0.08em; margin-right: -0.08em; }
+.share-url { font-size: 22px; color: rgba(255,255,255,0.9); }
+.share-url b { color: #FFFFFF; font-weight: 600; }
+.next { display: flex; flex-direction: column; gap: 6px; font-size: 22px; color: rgba(255,255,255,0.85); }
+.next b { font-size: 28px; font-weight: 600; color: #FFFFFF; }
+
+.tile-wrap { position: absolute; right: -56px; bottom: -84px; width: 500px; height: 340px; transform: rotate(-7deg); transform-origin: 100% 100%; transition: transform 200ms ease; }
+.tile-shadow { position: absolute; inset: 0; border-radius: 40px; box-shadow: 0 16px 24px rgba(6,10,58,0.30), 0 48px 96px rgba(6,10,58,0.55); opacity: 0; transition: opacity 200ms ease; }
+.tile { position: absolute; inset: 0; width: 100%; height: 100%; box-sizing: border-box; padding: 0; border: 10px solid #FFFFFF; border-radius: 40px; background: #F1F1F4; overflow: hidden; cursor: pointer; font: inherit; text-align: left; box-shadow: 0 2px 6px rgba(6,10,58,0.30), 0 24px 60px rgba(6,10,58,0.50); }
+.tile-dots { position: absolute; inset: 0; background-image: radial-gradient(rgba(12,13,73,0.14) 1.5px, transparent 1.5px); background-size: 22px 22px; }
+.tile svg.sketch { position: absolute; inset: 0; }
+.tile-label { position: absolute; left: 28px; top: 26px; display: flex; align-items: center; gap: 14px; padding: 12px 20px 12px 14px; border-radius: 16px; background: #0C0D49; color: #FFFFFF; font-size: 26px; font-weight: 600; }
+.tile-icon { width: 40px; height: 40px; border-radius: 10px; background: #FFFFFF; color: #0C0D49; display: flex; align-items: center; justify-content: center; }
+@media (hover: hover) and (pointer: fine) {
+  .lift-right .tile-wrap:hover { transform: translate(10px, -12px) rotate(-7deg); }
+  .lift-diagonal .tile-wrap:hover { transform: translate(-14px, -14px) rotate(-7deg) scale(1.03); }
+  .lift-right .tile-wrap:hover .tile-shadow, .lift-diagonal .tile-wrap:hover .tile-shadow { opacity: 1; }
+}
+.lift-right .tile-wrap:focus-within { transform: translate(10px, -12px) rotate(-7deg); }
+.lift-diagonal .tile-wrap:focus-within { transform: translate(-14px, -14px) rotate(-7deg) scale(1.03); }
+.lift-right .tile-wrap:focus-within .tile-shadow, .lift-diagonal .tile-wrap:focus-within .tile-shadow { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .glow { animation: none; }
+  .ripple { animation: none; opacity: 0.3; }
+  .spin { animation: pulse 1.6s ease-in-out infinite alternate; }
+  @keyframes pulse { from { opacity: 0.4; } to { opacity: 1; } }
+  .lift-right .tile-wrap:hover, .lift-diagonal .tile-wrap:hover, .lift-right .tile-wrap:focus-within, .lift-diagonal .tile-wrap:focus-within { transform: rotate(-7deg); }
+  .s-btn:active { transform: none; }
+}
+</style>
+
+<header class="top">
+  <div>
+    <h1>GovTech Meet waiting screen</h1>
+    <p>Interactive prototype of the meeting room display. Change the state and details on the right.</p>
+  </div>
+</header>
+
+<div class="layout">
+  <div class="stage-col">
+    <div class="stage" id="stage">
+      <div class="screen lift-diagonal" id="screen">
+        <div class="glow" aria-hidden="true"></div>
+        <div class="content" id="content">
+          <div class="s-head">
+            <img src="govtech-logo-white.png" alt="GovTech Sri Lanka">
+            <div class="s-room"><span id="room"></span><span class="s-clock" id="clock"></span></div>
+          </div>
+          <main class="s-main">
+            <div class="s-stack">
+              <div class="blk" id="b1"></div>
+              <div class="blk" id="b2"></div>
+              <div class="blk" id="b3"></div>
+            </div>
+            <div class="blk" id="b4"></div>
+          </main>
+          <footer class="s-foot" id="b5"></footer>
+          <div class="tile-wrap">
+            <span class="tile-shadow" aria-hidden="true"></span>
+            <button type="button" class="tile" aria-label="Open whiteboard">
+              <span class="tile-dots" aria-hidden="true"></span>
+              <svg class="sketch" aria-hidden="true" width="480" height="320" viewBox="0 0 480 320" fill="none">
+                <rect x="44" y="118" width="130" height="96" rx="12" fill="#FFFFFF" stroke="#D5D5DB" stroke-width="2"></rect>
+                <path d="M64 146h84M64 166h64M64 186h76" stroke="#B9B9C2" stroke-width="6" stroke-linecap="round"></path>
+                <path d="M190 166c40-4 62-22 96-20" stroke="#054BC9" stroke-width="4" stroke-linecap="round"></path>
+                <path d="m276 136 12 10-14 8" stroke="#054BC9" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></path>
+                <circle cx="350" cy="150" r="40" stroke="#0C0D49" stroke-width="4"></circle>
+                <path d="M90 250c26-18 46 14 72-4s40 10 64-6" stroke="#0C0D49" stroke-width="4" stroke-linecap="round"></path>
+              </svg>
+              <span class="tile-label">
+                <span class="tile-icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.4 3.6a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg></span>
+                <span>Open whiteboard</span>
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="stage-bar">
+      <span>Designed at 1920 × 1080. Hover the whiteboard tile to see its lift.</span>
+      <button type="button" class="btn" id="fs">View full screen</button>
+    </div>
+  </div>
+
+  <aside class="panel" aria-label="Tweaks">
+    <h2>Tweaks</h2>
+
+    <fieldset class="group">
+      <legend>Screen state</legend>
+      <div class="chips" id="states"></div>
+      <label class="switch" for="autoplay"><span>Cycle through states every 6 s</span><input type="checkbox" id="autoplay"></label>
+    </fieldset>
+
+    <fieldset class="group">
+      <legend>Meeting platform</legend>
+      <div class="chips">
+        <input type="radio" name="platform" id="pf-meet" value="meet" checked><label for="pf-meet">Google Meet</label>
+        <input type="radio" name="platform" id="pf-teams" value="teams"><label for="pf-teams">Microsoft Teams</label>
+      </div>
+    </fieldset>
+
+    <div class="group">
+      <label for="title-in">Meeting name</label>
+      <input class="text-in" id="title-in" type="text" maxlength="80" value="Quarterly digital services review">
+    </div>
+    <div class="group">
+      <label for="org-in">Organiser</label>
+      <input class="text-in" id="org-in" type="text" maxlength="60" value="Nadeesha Fernando">
+    </div>
+    <div class="group">
+      <label for="room-in">Room name</label>
+      <input class="text-in" id="room-in" type="text" maxlength="40" value="Conference Room 2">
+    </div>
+    <div class="group">
+      <label for="code-in">Share code</label>
+      <input class="text-in" id="code-in" type="text" maxlength="8" value="4NQWRV" autocomplete="off" spellcheck="false" style="text-transform: uppercase; letter-spacing: 0.08em">
+    </div>
+
+    <fieldset class="group">
+      <legend>Whiteboard hover</legend>
+      <div class="chips">
+        <input type="radio" name="lift" id="lf-diagonal" value="diagonal" checked><label for="lf-diagonal">Diagonal lift</label>
+        <input type="radio" name="lift" id="lf-right" value="right"><label for="lf-right">Lift right</label>
+        <input type="radio" name="lift" id="lf-off" value="off"><label for="lf-off">Off</label>
+      </div>
+    </fieldset>
+
+    <p class="hint">Animations follow the viewer's reduce-motion setting: the glow and ripple hold still and state changes become a plain fade.</p>
+  </aside>
+</div>
+
+<script>
+(function () {
+  var STATES = [
+    { id: 'idle',     label: 'Idle',          status: 'This room is free',              dot: '#4ADE80', clock: '11:42' },
+    { id: 'upcoming', label: 'Up next',       status: 'Next meeting, starts in 12 min', dot: '#FFFFFF', clock: '09:48' },
+    { id: 'starting', label: 'Starting now',  status: 'Starting now',                   dot: '#FBBF24', clock: '10:00' },
+    { id: 'live',     label: 'In progress',   status: 'In progress, started 4 min ago', dot: '#FF6B5E', clock: '10:04' },
+    { id: 'joining',  label: 'Joining',       status: 'Connecting this room',           dot: '#FFFFFF', clock: '10:04' },
+    { id: 'error',    label: 'Join failed',   status: 'Couldn’t join the meeting',  dot: '#FF6B5E', clock: '10:05' },
+    { id: 'offline',  label: 'Offline',       status: 'No network connection',          dot: '#FBBF24', clock: '10:05' }
+  ];
+  var byId = {}; STATES.forEach(function (s) { byId[s.id] = s; });
+  var EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';
+  var reduce = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var screen = $('screen'), stage = $('stage'), content = $('content');
+  var blocks = ['b1', 'b2', 'b3', 'b4', 'b5'].map($);
+  var cur = 'upcoming', autoTimer = null, pending = null;
+
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function val(id) { return $(id).value.trim(); }
+  function platformName() { return document.querySelector('input[name="platform"]:checked').value === 'teams' ? 'Microsoft Teams' : 'Google Meet'; }
+  function code() { return (val('code-in') || '4NQWRV').toUpperCase().replace(/[^A-Z0-9]/g, '') || '4NQWRV'; }
+  function codeHalves(cls) {
+    var c = code(), h = Math.ceil(c.length / 2);
+    return '<div class="' + cls + '" aria-label="Share code ' + c.split('').join(' ') + '"><span aria-hidden="true">' + c.slice(0, h) + '</span><span aria-hidden="true">' + c.slice(h) + '</span></div>';
+  }
+  var ICON_MONITOR = '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="13" rx="2"></rect><path d="M8 21h8M12 17v4"></path></svg>';
+  var ICON_RETRY = '<svg aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"></path><path d="M21 4v5h-5"></path></svg>';
+  var ICON_SPIN = '<svg class="spin" aria-hidden="true" width="32" height="32" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="12" stroke="rgba(255,255,255,0.25)" stroke-width="3"></circle><path d="M16 4a12 12 0 0 1 12 12" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"></path></svg>';
+
+  function render(id) {
+    var st = byId[id], pf = platformName(), url = 'meet.govtech.lk/' + code();
+    var meeting = ['upcoming', 'starting', 'live', 'joining', 'error'].indexOf(id) > -1;
+    $('room').textContent = val('room-in') || 'Conference Room 2';
+    $('clock').textContent = st.clock;
+
+    var ripple = (id === 'starting' || id === 'live') ? '<i class="ripple" style="color:' + st.dot + '"></i>' : '';
+    blocks[0].innerHTML = '<div class="status" role="status"><span class="dot">' + ripple + '<i style="background:' + st.dot + '"></i></span><span>' + st.status + '</span></div>';
+
+    if (meeting) blocks[1].innerHTML = '<h2 class="s-title">' + esc(val('title-in') || 'Untitled meeting') + '</h2>';
+    else if (id === 'idle') blocks[1].innerHTML = '<h2 class="s-title mid">Share your screen</h2>' + codeHalves('code-xl');
+    else blocks[1].innerHTML = '<h2 class="s-title alt">This screen is offline</h2>';
+
+    if (meeting) {
+      var meta = '<p class="s-meta"><b>10:00–11:00</b><span aria-hidden="true">·</span><span>Organised by ' + esc(val('org-in') || 'Organiser') + '</span><span aria-hidden="true">·</span><span>' + pf + '</span></p>';
+      if (id === 'error') meta += '<p class="s-body">' + pf + ' didn’t respond. Try again, or join from your laptop and share your screen with the code below.</p>';
+      blocks[2].innerHTML = meta;
+    } else if (id === 'idle') blocks[2].innerHTML = '<p class="s-body">Go to <b>' + url + '</b> on your laptop</p>';
+    else blocks[2].innerHTML = '<p class="s-body">Joining and screen sharing will come back on their own when the network returns. If it’s down for more than a few minutes, call IT support on [IT EXTENSION].</p>';
+
+    if (id === 'upcoming' || id === 'starting' || id === 'live') blocks[3].innerHTML = '<button type="button" class="s-btn" data-go="joining">' + (id === 'upcoming' ? 'Join on ' : 'Join now on ') + pf + '</button>';
+    else if (id === 'joining') blocks[3].innerHTML = '<div class="joining">' + ICON_SPIN + '<span>Joining ' + pf + '…</span></div><button type="button" class="s-ghost" data-go="live">Cancel</button>';
+    else if (id === 'error') blocks[3].innerHTML = '<button type="button" class="s-btn" data-go="joining">' + ICON_RETRY + '<span>Try again</span></button>';
+    else blocks[3].innerHTML = '';
+
+    if (meeting) blocks[4].innerHTML = '<section class="share" aria-label="Share your screen"><div class="share-label">' + ICON_MONITOR + '<span>Share your screen</span></div><div class="share-well">' + codeHalves('code-md') + '<div class="share-url">Go to <b>' + url + '</b></div></div></section>';
+    else if (id === 'idle') blocks[4].innerHTML = '<div class="next"><span>Next booking</span><b>Tomorrow at 09:30, Weekly team stand-up</b></div>';
+    else blocks[4].innerHTML = '';
+
+    var radio = $('st-' + id); if (radio) radio.checked = true;
+  }
+
+  function anim(el, frames, opts) { return el.animate ? el.animate(frames, opts) : null; }
+  function cancelAll(el) { if (el.getAnimations) el.getAnimations().forEach(function (a) { a.cancel(); }); }
+
+  function goTo(next) {
+    if (next === cur && !pending) return;
+    var calm = reduce.matches;
+    if (pending) clearTimeout(pending);
+    blocks.forEach(function (el) {
+      cancelAll(el);
+      anim(el, calm ? [{ opacity: 1 }, { opacity: 0 }] : [{ opacity: 1, transform: 'translateY(0)' }, { opacity: 0, transform: 'translateY(-8px)' }], { duration: 200, easing: 'ease-out', fill: 'forwards' });
+    });
+    pending = setTimeout(function () {
+      pending = null; cur = next; render(cur);
+      blocks.forEach(function (el, i) {
+        cancelAll(el);
+        anim(el, calm ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'translateY(0)' }],
+          { duration: calm ? 200 : 400, delay: calm ? 0 : i * 80, easing: EASE_OUT, fill: 'both' });
+      });
+    }, 200);
+  }
+
+  // State chips
+  var chipHost = $('states');
+  STATES.forEach(function (s) {
+    chipHost.insertAdjacentHTML('beforeend', '<input type="radio" name="state" id="st-' + s.id + '" value="' + s.id + '"><label for="st-' + s.id + '">' + s.label + '</label>');
+  });
+  chipHost.addEventListener('change', function (e) {
+    if (e.target.name !== 'state') return;
+    setAuto(false); goTo(e.target.value);
+  });
+
+  function setAuto(on) {
+    $('autoplay').checked = on;
+    if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+    if (on) autoTimer = setInterval(function () {
+      var i = STATES.findIndex(function (s) { return s.id === cur; });
+      goTo(STATES[(i + 1) % STATES.length].id);
+    }, 6000);
+  }
+  $('autoplay').addEventListener('change', function (e) { setAuto(e.target.checked); });
+
+  // Live text and option tweaks re-render in place, without the handover
+  ['title-in', 'org-in', 'room-in', 'code-in'].forEach(function (id) { $(id).addEventListener('input', function () { render(cur); }); });
+  document.querySelectorAll('input[name="platform"]').forEach(function (r) { r.addEventListener('change', function () { render(cur); }); });
+  document.querySelectorAll('input[name="lift"]').forEach(function (r) {
+    r.addEventListener('change', function () { screen.className = 'screen lift-' + r.value; });
+  });
+
+  // Buttons on the display itself
+  screen.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-go]');
+    if (b) { setAuto(false); goTo(b.getAttribute('data-go')); }
+  });
+
+  // Scale the 1920 x 1080 display to whatever space it has
+  function fit() {
+    var w = stage.clientWidth, h = stage.clientHeight;
+    var s = Math.min(w / 1920, h / 1080);
+    screen.style.transform = 'scale(' + s + ')';
+    if (document.fullscreenElement === stage) { screen.style.transformOrigin = '50% 50%'; screen.style.position = 'relative'; }
+    else { screen.style.transformOrigin = '0 0'; screen.style.position = 'absolute'; }
+  }
+  if (window.ResizeObserver) new ResizeObserver(fit).observe(stage); else window.addEventListener('resize', fit);
+  document.addEventListener('fullscreenchange', fit);
+  fit();
+
+  $('fs').addEventListener('click', function () {
+    if (!stage.requestFullscreen) return;
+    stage.requestFullscreen().catch(function () {});
+  });
+
+  // Burn-in protection: a tiny, unseen shift every 5 minutes
+  setInterval(function () {
+    content.style.transform = 'translate(' + Math.round(Math.random() * 8 - 4) + 'px,' + Math.round(Math.random() * 8 - 4) + 'px)';
+  }, 300000);
+
+  render(cur);
+})();
+</script>
